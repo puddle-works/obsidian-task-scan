@@ -1,0 +1,10 @@
+manifestVersion: 1
+name: "@puddleworks/obsidian-task-scan"
+version: "2026.10.23.1"
+description: "List the open task lines (\"- [ ]\") in an Obsidian vault, with the file each came from, as candidates for puddle requests."
+additionalFiles:
+  - README.md
+models:
+  - obsidian_task_scan.ts
+workflows:
+  - workflow-obsidian-task-scan.yaml
