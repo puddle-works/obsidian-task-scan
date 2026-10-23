@@ -5,16 +5,22 @@
  *
  * @module
  */
-import { assertEquals, assertRejects } from "jsr:@std/assert@1";
-import { assertSpyCallArgs, stub } from "jsr:@std/testing@1/mock";
+import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.19";
+import { assertSpyCallArgs, stub } from "jsr:@std/testing@1.0.21/mock";
 import {
   behaviour,
+  ClassifiedSchema,
+  classify,
+  ClassifyArgsSchema,
   type GlobalArgs,
   GlobalArgsSchema,
+  looksSecret,
   model,
+  prepare,
   ResultSchema,
   run,
   RunArgsSchema,
+  taskId,
 } from "./obsidian_task_scan.ts";
 
 /** Values for the required inputs. */
@@ -227,22 +233,206 @@ Deno.test("empty vault returns no tasks and scanning never changes vault files",
 
 Deno.test("result schema requires a positive line number and task text", async () => {
   const vault = await makeVault({ "a.md": "- [ ] task" });
-  const items = await run(DEFAULTS, vault);
+  const { items, questions } = await prepare(await run(DEFAULTS, vault));
   assertEquals(
     ResultSchema.safeParse({
       args: DEFAULTS,
       items,
+      questions,
       ranAt: new Date().toISOString(),
     }).success,
     true,
   );
   for (
-    const item of [{ path: "a.md", text: "task" }, {
-      path: "a.md",
-      line: 0,
-      text: "task",
-    }]
+    const item of [{ ...items[0], line: undefined }, { ...items[0], line: 0 }]
   ) {
     assertEquals(ResultSchema.shape.items.safeParse([item]).success, false);
   }
+});
+
+// Leaving out templates and daily notes
+
+Deno.test("leaves out the Templates folder and daily notes by default", async () => {
+  const vault = await makeVault({
+    "Templates/Daily Note.md": "- [ ] Supplements",
+    "2026-10-23.md": "- [ ] Supplements",
+    "Journal/2026-01-01.md": "- [ ] Tidy table",
+    "2026 plan.md": "- [ ] kept, not a daily note",
+    "TemplatesOld/a.md": "- [ ] kept, a different folder",
+    "tasks/Tech.md": "- [ ] kept",
+  });
+  assertEquals((await run(DEFAULTS, vault)).map((t) => t.path), [
+    "2026 plan.md",
+    "TemplatesOld/a.md",
+    "tasks/Tech.md",
+  ]);
+});
+
+Deno.test("excludeFolders replaces the default list of folders to leave out", async () => {
+  const vault = await makeVault({
+    "Templates/a.md": "- [ ] template",
+    "Archive/Old/b.md": "- [ ] archived",
+    "c.md": "- [ ] kept",
+  });
+  const items = await run(DEFAULTS, { ...vault, excludeFolders: ["Archive/"] });
+  assertEquals(items.map((t) => t.path), ["Templates/a.md", "c.md"]);
+  const all = await run(DEFAULTS, { ...vault, excludeFolders: [] });
+  assertEquals(all.length, 3);
+});
+
+// Preparing the classifier questions
+
+Deno.test("taskId depends on the file and the text, not the line", async () => {
+  const a = await taskId({ path: "a.md", line: 1, text: "Back up photos" });
+  assertEquals(
+    a,
+    await taskId({ path: "a.md", line: 9, text: "Back up photos" }),
+  );
+  assertEquals(a.length, 16);
+  assertEquals(/^[0-9a-f]+$/.test(a), true);
+  for (
+    const other of [
+      { path: "b.md", line: 1, text: "Back up photos" },
+      { path: "a.md", line: 1, text: "Back up the photos" },
+    ]
+  ) {
+    assertEquals(a === await taskId(other), false);
+  }
+});
+
+Deno.test("looksSecret catches tokens, keys, passwords and emails but not ordinary tasks", () => {
+  for (
+    const text of [
+      "rotate ghp_abcdefghijklmnopqrstuvwx1234",
+      "AKIAABCDEFGHIJKLMNOP is the old key",
+      "set password: hunter2",
+      "email someone@example.com about it",
+      "-----BEGIN RSA PRIVATE KEY-----",
+    ]
+  ) assertEquals(looksSecret(text), true, text);
+  for (
+    const text of [
+      "Rotate the AWS access keys monthly",
+      "Reset my password on the router",
+      "List open pull requests every Monday",
+    ]
+  ) assertEquals(looksSecret(text), false, text);
+});
+
+Deno.test("prepare asks one choice question per task and withholds secret-looking tasks", async () => {
+  const tasks = [
+    {
+      path: "tasks/Tech.md",
+      line: 3,
+      text: "Check CI on every repo each morning",
+    },
+    {
+      path: "tasks/Tech.md",
+      line: 4,
+      text: "store token=abc123 somewhere safe",
+    },
+  ];
+  const { items, questions } = await prepare(tasks);
+  assertEquals(items.map((i) => i.withheld), [false, true]);
+  assertEquals(items[0].id, await taskId(tasks[0]));
+  assertEquals(Object.keys(questions), [items[0].id]);
+  const question = questions[items[0].id];
+  assertEquals(question.type, "choice");
+  assertEquals(Object.keys(question.criteria).sort(), ["extension", "person"]);
+  assertEquals(
+    question.instructions.includes("Check CI on every repo each morning"),
+    true,
+  );
+  assertEquals(question.instructions.includes("tasks/Tech.md"), true);
+});
+
+Deno.test("run writes the prepared items and questions into the result", async () => {
+  const tasks = [{
+    path: "a.md",
+    line: 1,
+    text: "Post weekly metrics to Slack",
+  }];
+  using _ = stub(behaviour, "run", () => Promise.resolve(tasks));
+  const writes: Array<Record<string, unknown>> = [];
+  await model.methods.run.execute(RunArgsSchema.parse({}), {
+    globalArgs: SETTINGS,
+    writeResource: (_spec, name, data) => {
+      writes.push(data);
+      return Promise.resolve({ name });
+    },
+  });
+  const result = ResultSchema.parse(writes[0]);
+  assertEquals(result.items, (await prepare(tasks)).items);
+  assertEquals(Object.keys(result.questions), [result.items[0].id]);
+});
+
+// Classifying with Jev's answers
+
+const answer = (choice: string, confidence: number) => ({
+  type: "choice" as const,
+  choice,
+  confidence,
+  probabilities: { [choice]: confidence },
+});
+
+Deno.test("classify marks extension answers at or above the threshold as candidates", async () => {
+  const { items } = await prepare([
+    { path: "a.md", line: 1, text: "Check CI every morning" },
+    { path: "a.md", line: 2, text: "Renew the car insurance" },
+    { path: "a.md", line: 3, text: "Fix the garage door" },
+    { path: "a.md", line: 4, text: "Book the dentist" },
+    { path: "a.md", line: 5, text: "token=abc123 for the NAS" },
+  ]);
+  const [ci, insurance, garage, dentist, secret] = items;
+  const out = classify(items, {
+    [ci.id]: answer("extension", 1),
+    [insurance.id]: answer("extension", 0.48),
+    [garage.id]: answer("person", 1),
+  }, 0.7);
+  assertEquals(
+    out.items.map((i) => [i.text, i.classification, i.confidence]),
+    [
+      [ci.text, "candidate", 1],
+      [insurance.text, "not_candidate", 0.48],
+      [garage.text, "not_candidate", 1],
+      [dentist.text, "unclassified", undefined],
+      [secret.text, "withheld", undefined],
+    ],
+  );
+  assertEquals(out.counts, {
+    candidate: 1,
+    not_candidate: 2,
+    unclassified: 1,
+    withheld: 1,
+  });
+});
+
+Deno.test("classify method writes one classified resource", async () => {
+  const { items } = await prepare([{
+    path: "a.md",
+    line: 1,
+    text: "Check CI every morning",
+  }]);
+  const args = ClassifyArgsSchema.parse({
+    tasks: items,
+    answers: { [items[0].id]: answer("extension", 0.9) },
+  });
+  assertEquals(args.threshold, 0.7);
+  const writes: Array<{ specName: string; data: Record<string, unknown> }> = [];
+  const out = await model.methods.classify.execute(args, {
+    globalArgs: SETTINGS,
+    writeResource: (specName, name, data) => {
+      writes.push({ specName, data });
+      return Promise.resolve({ name });
+    },
+  });
+  assertEquals(out.dataHandles.length, 1);
+  assertEquals(writes[0].specName, "classified");
+  const classified = ClassifiedSchema.parse(writes[0].data);
+  assertEquals(classified.items[0].classification, "candidate");
+  assertEquals(classified.threshold, 0.7);
+});
+
+Deno.test("classify arguments default to no answers", () => {
+  assertEquals(ClassifyArgsSchema.parse({ tasks: [] }).answers, {});
 });
