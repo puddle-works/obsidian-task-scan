@@ -4,6 +4,8 @@ description: "List the open task lines (\"- [ ]\") in an Obsidian vault, with th
 version: 1
 tags:
   puddle: "true"
+  maxReruns: "5"
+  maxWallClock: "30m"
 
 inputs:
   type: object

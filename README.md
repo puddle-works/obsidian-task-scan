@@ -37,10 +37,21 @@ Run it:
 swamp workflow run @puddleworks/obsidian-task-scan
 ```
 
+Each result item contains `path` (relative to the vault), `line` (1-based), and trimmed task `text`.
+
+Schedule it:
+
+```bash
+swamp workflow trigger set @puddleworks/obsidian-task-scan --schedule "0 8 * * 1"
+swamp workflow trigger get @puddleworks/obsidian-task-scan
+```
+
+This example runs Mondays at 08:00. Scheduled runs need `swamp serve`; add `--input folder=Projects` to the trigger set command to limit them to a subfolder.
+
 Test it:
 
 ```bash
 DENO=$(swamp doctor extensions --json | jq -r '.denoPath')
 $DENO check extensions/models/obsidian_task_scan.ts
-$DENO test extensions/models/obsidian_task_scan_test.ts
+$DENO test --allow-read --allow-write extensions/models/obsidian_task_scan_test.ts
 ```

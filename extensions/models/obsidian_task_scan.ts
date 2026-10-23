@@ -20,22 +20,36 @@ import { z } from "npm:zod@4";
 
 /** Settings fixed once per model instance by the builder, not the person running it. */
 export const GlobalArgsSchema = z.object({
-  vaultPath: z.string().min(1).describe("Absolute path to the Obsidian vault folder."),
+  vaultPath: z.string().min(1).describe(
+    "Absolute path to the Obsidian vault folder.",
+  ),
 });
 export type GlobalArgs = z.infer<typeof GlobalArgsSchema>;
 
 /** Arguments for `run` — one per specification input. */
 export const RunArgsSchema = z.object({
-  folder: z.string().default("").describe("Subfolder of the vault to scan, relative to the vault root. Empty scans the whole vault."),
+  folder: z.string().default("").describe(
+    "Subfolder of the vault to scan, relative to the vault root. Empty scans the whole vault.",
+  ),
 });
 export type RunArgs = z.infer<typeof RunArgsSchema>;
 
 /**
  * One run's result. A list of open tasks, each with the task text, the vault-relative file path and the line number.
  */
+export const TaskSchema = z.object({
+  /** Path of the note, relative to the vault root, with "/" separators. */
+  path: z.string(),
+  /** 1-based line number of the task in the note. */
+  line: z.number().int().min(1),
+  /** The task text after the checkbox, trimmed. */
+  text: z.string().min(1),
+});
+export type Task = z.infer<typeof TaskSchema>;
+
 export const ResultSchema = z.object({
   args: RunArgsSchema,
-  items: z.array(z.unknown()),
+  items: z.array(TaskSchema),
   ranAt: z.iso.datetime(),
 });
 export type Result = z.infer<typeof ResultSchema>;
@@ -43,10 +57,81 @@ export type Result = z.infer<typeof ResultSchema>;
 /**
  * List the open task lines ("- [ ]") in an Obsidian vault, with the file each came from, as candidates for puddle requests.
  *
- * TODO(draft): implement. Returns no items until then.
+ * Reads visible Markdown notes in path order without changing the vault.
  */
-export function run(_args: RunArgs, _settings: GlobalArgs): Promise<unknown[]> {
-  return Promise.resolve([]);
+export async function run(
+  args: RunArgs,
+  settings: GlobalArgs,
+): Promise<Task[]> {
+  const folder = args.folder.replace(/\/+$/, "");
+  if (folder.startsWith("/") || folder.split("/").includes("..")) {
+    throw new Error(
+      `The folder must be inside the vault, not "${args.folder}".`,
+    );
+  }
+  const root = settings.vaultPath.replace(/\/+$/, "");
+  const start = folder ? `${root}/${folder}` : root;
+  try {
+    if (!(await Deno.stat(start)).isDirectory) throw new Deno.errors.NotFound();
+  } catch (e) {
+    if (e instanceof Deno.errors.NotFound) {
+      throw new Error(
+        folder
+          ? `No folder "${folder}" in the vault.`
+          : `No vault at "${root}".`,
+      );
+    }
+    throw e;
+  }
+
+  // A chosen subfolder must not lead through a symlink either.
+  let partPath = root;
+  for (const part of folder.split("/").filter(Boolean)) {
+    partPath += `/${part}`;
+    if ((await Deno.lstat(partPath)).isSymlink) {
+      throw new Error(
+        `The folder must be inside the vault, not "${args.folder}".`,
+      );
+    }
+  }
+
+  const notes = (await listNotes(start, folder)).sort();
+  const tasks: Task[] = [];
+  const taskLine = /^\s*(?:[-*+]|\d+[.)])\s+\[ \]\s+(.*\S)\s*$/;
+  for (const path of notes) {
+    const lines = (await Deno.readTextFile(`${root}/${path}`)).split("\n");
+    let fence: "```" | "~~~" | undefined;
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index].replace(/\r$/, "");
+      const marker = /^\s*(```|~~~)/.exec(line)?.[1] as
+        | "```"
+        | "~~~"
+        | undefined;
+      if (marker && (!fence || marker === fence)) {
+        fence = fence ? undefined : marker;
+        continue;
+      }
+      if (fence) continue;
+      const match = taskLine.exec(line);
+      if (match) tasks.push({ path, line: index + 1, text: match[1].trim() });
+    }
+  }
+  return tasks;
+}
+
+/** Vault-relative paths of visible Markdown notes under a directory. */
+async function listNotes(dir: string, relDir: string): Promise<string[]> {
+  const notes: string[] = [];
+  for await (const entry of Deno.readDir(dir)) {
+    if (entry.name.startsWith(".") || entry.isSymlink) continue;
+    const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
+    if (entry.isDirectory) {
+      notes.push(...await listNotes(`${dir}/${entry.name}`, rel));
+    } else if (entry.isFile && entry.name.endsWith(".md")) {
+      notes.push(rel);
+    }
+  }
+  return notes;
 }
 
 /** What the run method calls. Tests swap `run` here to check the wiring without the real behaviour. */
@@ -67,7 +152,8 @@ export const model = {
   globalArguments: GlobalArgsSchema,
   resources: {
     result: {
-      description: "A list of open tasks, each with the task text, the vault-relative file path and the line number.",
+      description:
+        "A list of open tasks, each with the task text, the vault-relative file path and the line number.",
       schema: ResultSchema,
       lifetime: "infinite" as const,
       garbageCollection: 20,
@@ -75,7 +161,8 @@ export const model = {
   },
   methods: {
     run: {
-      description: "List the open task lines (\"- [ ]\") in an Obsidian vault, with the file each came from, as candidates for puddle requests.",
+      description:
+        'List the open task lines ("- [ ]") in an Obsidian vault, with the file each came from, as candidates for puddle requests.',
       arguments: RunArgsSchema,
       execute: async (args: RunArgs, context: MethodContext) => {
         const items = await behaviour.run(args, context.globalArgs);
