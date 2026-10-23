@@ -185,6 +185,20 @@ Deno.test("rejects folders outside the vault and names missing directories", asy
   );
 });
 
+Deno.test("rejects a folder that leads through a symlink out of the vault", async () => {
+  const vault = await makeVault({ "Work/a.md": "- [ ] work" });
+  const outside = await makeVault({ "Deep/escape.md": "- [ ] outside" });
+  await Deno.symlink(outside.vaultPath, `${vault.vaultPath}/linked`);
+  await Deno.symlink(outside.vaultPath, `${vault.vaultPath}/Work/linked`);
+  for (const folder of ["linked", "linked/Deep", "Work/linked"]) {
+    await assertRejects(
+      () => run({ folder }, vault),
+      Error,
+      "inside the vault",
+    );
+  }
+});
+
 Deno.test("empty vault returns no tasks and scanning never changes vault files", async () => {
   const empty = await makeVault({});
   assertEquals(await run(DEFAULTS, empty), []);
