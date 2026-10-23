@@ -1,6 +1,6 @@
 id: 0f449c58-6be3-4b5f-a3f4-5c106f6fd37c
 name: "@puddleworks/obsidian-task-scan"
-description: "List the open task lines (\"- [ ]\") in an Obsidian vault, with the file each came from, as candidates for puddle requests."
+description: "Find the open tasks in an Obsidian vault that a swamp extension could do, using Jev to classify them."
 version: 1
 tags:
   puddle: "true"
@@ -18,12 +18,12 @@ inputs:
 
 jobs:
   - name: main
-    description: "Run obsidian-task-scan once with the user's inputs."
+    description: "List the vault's open tasks, ask Jev about each, and classify them."
     dependsOn: []
     weight: 0
     steps:
       - name: run
-        description: "A list of open tasks, each with the task text, the vault-relative file path and the line number."
+        description: "The open tasks, leaving out templates and daily notes, and one question for Jev about each."
         dependsOn: []
         weight: 0
         allowFailure: false
@@ -33,3 +33,38 @@ jobs:
           methodName: run
           inputs:
             folder: ${{ inputs.folder }}
+      - name: ask
+        description: "Ask Jev whether a swamp extension could do each task. A failure here leaves the tasks unclassified."
+        dependsOn:
+          - step: run
+            condition:
+              type: succeeded
+        weight: 0
+        allowFailure: true
+        guard: ${{ size(steps.run.outputs.questions) == 0 }}
+        task:
+          type: model_method
+          modelIdOrName: jev
+          methodName: ask
+          inputs:
+            name: obsidian-task-scan
+            state: "Classify each task."
+            questions: ${{ steps.run.outputs.questions }}
+      - name: classify
+        description: "Every task with its classification (candidate, not_candidate, unclassified or withheld) and confidence."
+        dependsOn:
+          - step: run
+            condition:
+              type: succeeded
+          - step: ask
+            condition:
+              type: always
+        weight: 0
+        allowFailure: false
+        task:
+          type: model_method
+          modelIdOrName: obsidian-task-scan-model
+          methodName: classify
+          inputs:
+            tasks: ${{ steps.run.outputs.items }}
+            answers: '${{ has(steps.ask) && steps.ask.status == "succeeded" ? steps.ask.outputs.answers : {} }}'
