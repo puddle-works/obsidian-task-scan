@@ -30,6 +30,7 @@ export const GlobalArgsSchema = z.object({
     "Vault folders to leave out, relative to the vault root. Daily notes (YYYY-MM-DD.md) are always left out.",
   ),
 });
+/** The settings as given, before defaults apply. */
 export type GlobalArgs = z.input<typeof GlobalArgsSchema>;
 
 /** Arguments for `run` — one per specification input. */
@@ -38,6 +39,7 @@ export const RunArgsSchema = z.object({
     "Subfolder of the vault to scan, relative to the vault root. Empty scans the whole vault.",
   ),
 });
+/** Arguments for `run`, after defaults apply. */
 export type RunArgs = z.infer<typeof RunArgsSchema>;
 
 /**
@@ -51,6 +53,7 @@ export const TaskSchema = z.object({
   /** The task text after the checkbox, trimmed. */
   text: z.string().min(1),
 });
+/** One open task line. */
 export type Task = z.infer<typeof TaskSchema>;
 
 /** A task ready for the classifier. */
@@ -60,6 +63,7 @@ export const PreparedTaskSchema = TaskSchema.extend({
   /** The text looks like it holds a secret, so it is never sent to the model. */
   withheld: z.boolean(),
 });
+/** A task with its id and withheld flag. */
 export type PreparedTask = z.infer<typeof PreparedTaskSchema>;
 
 /** A Jev `choice` question, as `@swamp/typesafe-ai` `ask` takes it. */
@@ -68,8 +72,10 @@ export const ChoiceQuestionSchema = z.object({
   instructions: z.string(),
   criteria: z.record(z.string(), z.string()),
 });
+/** One question for Jev. */
 export type ChoiceQuestion = z.infer<typeof ChoiceQuestionSchema>;
 
+/** What `run` stores: the prepared tasks and one question per task Jev may see. */
 export const ResultSchema = z.object({
   args: RunArgsSchema,
   items: z.array(PreparedTaskSchema),
@@ -77,6 +83,7 @@ export const ResultSchema = z.object({
   questions: z.record(z.string(), ChoiceQuestionSchema),
   ranAt: z.iso.datetime(),
 });
+/** The `result` resource. */
 export type Result = z.infer<typeof ResultSchema>;
 
 /**
@@ -235,8 +242,10 @@ export const AnswerSchema = z.looseObject({
   choice: z.string(),
   confidence: z.number().min(0).max(1),
 });
+/** One parsed answer from Jev. */
 export type Answer = z.infer<typeof AnswerSchema>;
 
+/** Arguments for `classify`: the tasks from `run` and Jev's answers. */
 export const ClassifyArgsSchema = z.object({
   tasks: z.array(PreparedTaskSchema).describe("The items from `run`."),
   answers: z.record(z.string(), AnswerSchema).default({}).describe(
@@ -246,8 +255,10 @@ export const ClassifyArgsSchema = z.object({
     'Least confidence in an "extension" answer for the task to be a candidate.',
   ),
 });
+/** Arguments for `classify`, after defaults apply. */
 export type ClassifyArgs = z.infer<typeof ClassifyArgsSchema>;
 
+/** The classifications a task can get. */
 export const CLASSIFICATIONS = [
   "candidate",
   "not_candidate",
@@ -255,19 +266,23 @@ export const CLASSIFICATIONS = [
   "withheld",
 ] as const;
 
+/** A task with its classification, and Jev's choice and confidence when it answered. */
 export const ClassifiedTaskSchema = PreparedTaskSchema.extend({
   classification: z.enum(CLASSIFICATIONS),
   choice: z.string().optional(),
   confidence: z.number().min(0).max(1).optional(),
 });
+/** One classified task. */
 export type ClassifiedTask = z.infer<typeof ClassifiedTaskSchema>;
 
+/** What `classify` stores: every task classified, with a count of each classification. */
 export const ClassifiedSchema = z.object({
   threshold: z.number(),
   items: z.array(ClassifiedTaskSchema),
   counts: z.record(z.enum(CLASSIFICATIONS), z.number().int().min(0)),
   classifiedAt: z.iso.datetime(),
 });
+/** The `classified` resource. */
 export type Classified = z.infer<typeof ClassifiedSchema>;
 
 /** Turn Jev's answers into a classification for every task. */
@@ -309,6 +324,7 @@ export const behaviour = { run };
 
 interface MethodContext {
   globalArgs: GlobalArgs;
+  logger: { info: (message: string, props?: Record<string, unknown>) => void };
   writeResource: (
     specName: string,
     name: string,
@@ -316,6 +332,7 @@ interface MethodContext {
   ) => Promise<{ name: string }>;
 }
 
+/** The `@puddleworks/obsidian-task-scan` model type: methods `run` and `classify`. */
 export const model = {
   type: "@puddleworks/obsidian-task-scan",
   version: "2026.10.23.2",
@@ -342,6 +359,9 @@ export const model = {
         'List the open task lines ("- [ ]") in an Obsidian vault, leaving out templates and daily notes, and prepare a question for Jev about each.',
       arguments: RunArgsSchema,
       execute: async (args: RunArgs, context: MethodContext) => {
+        context.logger.info("Scanning the vault folder {folder}", {
+          folder: args.folder,
+        });
         const tasks = await behaviour.run(args, context.globalArgs);
         const result: Result = {
           args,
@@ -349,6 +369,15 @@ export const model = {
           ranAt: new Date().toISOString(),
         };
         const handle = await context.writeResource("result", "result", result);
+        // Counts only: task text and note paths stay out of the logs.
+        context.logger.info(
+          "Found {tasks} open tasks, {withheld} withheld; {questions} questions for Jev",
+          {
+            tasks: result.items.length,
+            withheld: result.items.filter((i) => i.withheld).length,
+            questions: Object.keys(result.questions).length,
+          },
+        );
         return { dataHandles: [handle] };
       },
     },
@@ -357,6 +386,13 @@ export const model = {
         'Classify each task from Jev\'s answers: a candidate when the answer is "extension" with at least the threshold confidence.',
       arguments: ClassifyArgsSchema,
       execute: async (args: ClassifyArgs, context: MethodContext) => {
+        context.logger.info(
+          "Classifying {tasks} tasks from {answers} answers",
+          {
+            tasks: args.tasks.length,
+            answers: Object.keys(args.answers).length,
+          },
+        );
         const classified: Classified = {
           threshold: args.threshold,
           ...classify(args.tasks, args.answers, args.threshold),
@@ -366,6 +402,10 @@ export const model = {
           "classified",
           "classified",
           classified,
+        );
+        context.logger.info(
+          "{candidate} candidates, {not_candidate} not candidates, {unclassified} unclassified, {withheld} withheld",
+          classified.counts,
         );
         return { dataHandles: [handle] };
       },

@@ -1,0 +1,82 @@
+{
+  "extension": "@puddleworks/obsidian-task-scan",
+  "version": "2026.10.27.1",
+  "reviewedAt": "2026-10-27T14:22:15Z",
+  "dimensions": [
+    {
+      "id": "credentials-secrets",
+      "verdict": "pass",
+      "note": "No secrets. The settings are a vault path and folders to leave out. The Jev key lives in the separate @swamp/typesafe-ai instance, from a vault. Task text that looks like a token, key, password or email is withheld and never sent to Jev (tested)."
+    },
+    {
+      "id": "logging-quality",
+      "verdict": "pass",
+      "note": "run and classify log at info on entry (folder; task and answer counts) and completion (task, withheld and question counts; one count per classification), with structured placeholders. Task text and note paths are never logged (tested)."
+    },
+    {
+      "id": "error-handling",
+      "verdict": "pass",
+      "note": "A folder that is absolute, climbs out with '..' or leads through a symlink is refused, and a missing vault or folder is named, before any note is read. Only NotFound is caught; other errors are rethrown."
+    },
+    {
+      "id": "testing-completeness",
+      "verdict": "pass",
+      "note": "27 tests on temp vaults, no network: schemas and defaults, task parsing (markers, CRLF, fenced code, hidden files, symlinks), folder limits and refusals, exclusions, stable ids, secret detection, questions, classification thresholds, method wiring, logging, the manifest's packaging and the workflow file ids."
+    },
+    {
+      "id": "idempotency-resilience",
+      "verdict": "pass",
+      "note": "The vault is only read, never written (tested). Each run stores a new result and classified version. An unreachable Jev leaves tasks unclassified (ask has allowFailure) and the next run tries again."
+    },
+    {
+      "id": "api-contracts",
+      "verdict": "pass",
+      "note": "No HTTP calls here; Jev is called by @swamp/typesafe-ai. Its answers are checked against AnswerSchema (choice, confidence 0..1) when classify parses its arguments, and answers for unknown ids are ignored."
+    },
+    {
+      "id": "resource-management",
+      "verdict": "pass",
+      "note": "Only Deno.stat, lstat, readDir and readTextFile, which hold no handles open. No temporary files."
+    },
+    {
+      "id": "published-surface-hygiene",
+      "verdict": "pass",
+      "note": "README uses /path/to/your/vault. Tests use made-up tasks and someone@example.com. No hostnames, IPs or personal paths in shipped files. README says the text and note path of each task that is not withheld are sent to Jev."
+    },
+    {
+      "id": "schema-strictness",
+      "verdict": "pass",
+      "note": "All schemas are plain z.object except AnswerSchema, a looseObject on purpose: typesafe-ai answers carry extra fields such as probabilities, and only choice and confidence are read."
+    },
+    {
+      "id": "lifetime-gc",
+      "verdict": "pass",
+      "note": "result: infinite, keep 20. classified: infinite, keep 20."
+    },
+    {
+      "id": "crud-completeness",
+      "verdict": "na",
+      "note": "Not a CRUD lifecycle behavior; it reads a vault and classifies its tasks."
+    },
+    {
+      "id": "preflight-checks",
+      "verdict": "pass",
+      "note": "run checks folder containment and existence before reading. Nothing is written outside swamp data and there is no remote state, so there is nothing to skip by label."
+    },
+    {
+      "id": "instance-names",
+      "verdict": "pass",
+      "note": "run writes result/result and classify writes classified/classified; each method writes one instance."
+    },
+    {
+      "id": "data-access",
+      "verdict": "na",
+      "note": "No method reads stored state; the workflow passes run's outputs and Jev's answers to classify as inputs."
+    },
+    {
+      "id": "version-upgrades",
+      "verdict": "pass",
+      "note": "The type has never been published and model.version is unchanged with no schema change, so no upgrade entry is needed."
+    }
+  ]
+}

@@ -1,12 +1,13 @@
 /**
  * Tests for @puddleworks/obsidian-task-scan.
  *
- * Run with the "Test it" command in puddles/obsidian-task-scan/README.md.
+ * Run with: make test
  *
  * @module
  */
 import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.19";
 import { assertSpyCallArgs, stub } from "jsr:@std/testing@1.0.21/mock";
+import { parse as parseYaml } from "jsr:@std/yaml@1";
 import {
   behaviour,
   ClassifiedSchema,
@@ -31,6 +32,23 @@ const REQUIRED = {};
  * Tests of the real behaviour call `run` with working settings of their own.
  */
 const SETTINGS: GlobalArgs = { vaultPath: "example" };
+
+/** A logger that drops everything, for tests that do not look at logs. */
+const QUIET = { info: () => {} };
+
+/** A logger that records each line. */
+function recordingLogger() {
+  const lines: Array<{ message: string; props?: Record<string, unknown> }> =
+    [];
+  return {
+    lines,
+    logger: {
+      info: (message: string, props?: Record<string, unknown>) => {
+        lines.push({ message, props });
+      },
+    },
+  };
+}
 
 Deno.test("model type matches the app spec", () => {
   assertEquals(model.type, "@puddleworks/obsidian-task-scan");
@@ -68,6 +86,7 @@ Deno.test("run writes one result resource with the arguments it ran with", async
   const writes: Array<{ specName: string; data: Record<string, unknown> }> = [];
   const out = await model.methods.run.execute(args, {
     globalArgs: SETTINGS,
+    logger: QUIET,
     writeResource: (specName, name, data) => {
       writes.push({ specName, data });
       return Promise.resolve({ name });
@@ -356,6 +375,7 @@ Deno.test("run writes the prepared items and questions into the result", async (
   const writes: Array<Record<string, unknown>> = [];
   await model.methods.run.execute(RunArgsSchema.parse({}), {
     globalArgs: SETTINGS,
+    logger: QUIET,
     writeResource: (_spec, name, data) => {
       writes.push(data);
       return Promise.resolve({ name });
@@ -421,6 +441,7 @@ Deno.test("classify method writes one classified resource", async () => {
   const writes: Array<{ specName: string; data: Record<string, unknown> }> = [];
   const out = await model.methods.classify.execute(args, {
     globalArgs: SETTINGS,
+    logger: QUIET,
     writeResource: (specName, name, data) => {
       writes.push({ specName, data });
       return Promise.resolve({ name });
@@ -435,4 +456,65 @@ Deno.test("classify method writes one classified resource", async () => {
 
 Deno.test("classify arguments default to no answers", () => {
   assertEquals(ClassifyArgsSchema.parse({ tasks: [] }).answers, {});
+});
+
+Deno.test("methods log at info on entry and completion, never the task text", async () => {
+  const vaultPath = await Deno.makeTempDir();
+  await Deno.writeTextFile(
+    `${vaultPath}/a.md`,
+    "- [ ] Post weekly metrics to Slack\n- [ ] token=abc123 for the NAS\n",
+  );
+  const write = (_s: string, name: string) => Promise.resolve({ name });
+
+  const ran = recordingLogger();
+  await model.methods.run.execute({ folder: "" }, {
+    globalArgs: { vaultPath },
+    logger: ran.logger,
+    writeResource: write,
+  });
+  assertEquals(ran.lines.length, 2);
+  assertEquals(ran.lines[0].props?.folder, "");
+  assertEquals(ran.lines[1].props, { tasks: 2, withheld: 1, questions: 1 });
+
+  const { items } = await prepare([
+    { path: "a.md", line: 1, text: "Post weekly metrics to Slack" },
+  ]);
+  const classified = recordingLogger();
+  await model.methods.classify.execute(
+    ClassifyArgsSchema.parse({
+      tasks: items,
+      answers: { [items[0].id]: answer("extension", 0.9) },
+    }),
+    { globalArgs: SETTINGS, logger: classified.logger, writeResource: write },
+  );
+  assertEquals(classified.lines.length, 2);
+  assertEquals(classified.lines[0].props, { tasks: 1, answers: 1 });
+  assertEquals(classified.lines[1].props?.candidate, 1);
+
+  const logged = JSON.stringify([...ran.lines, ...classified.lines]);
+  for (const text of ["Post weekly metrics", "abc123", "a.md"]) {
+    assertEquals(logged.includes(text), false, text);
+  }
+});
+
+Deno.test("manifest is public, ships the workflow and depends on @swamp/typesafe-ai", () => {
+  const manifest = parseYaml(
+    Deno.readTextFileSync(new URL("../../manifest.yaml", import.meta.url)),
+  ) as {
+    name: string;
+    visibility?: string;
+    repository?: string;
+    license?: string;
+    dependencies?: string[];
+    workflows?: string[];
+  };
+  assertEquals(manifest.name, model.type);
+  assertEquals(manifest.visibility, "public");
+  assertEquals(
+    manifest.repository,
+    "https://github.com/puddle-works/obsidian-task-scan",
+  );
+  assertEquals(manifest.license, "MIT");
+  assertEquals(manifest.dependencies, ["@swamp/typesafe-ai"]);
+  assertEquals(manifest.workflows, ["workflow-obsidian-task-scan.yaml"]);
 });
