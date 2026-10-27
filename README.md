@@ -1,4 +1,6 @@
-# Find tasks in an Obsidian vault that a swamp extension could do
+# @puddleworks/obsidian-task-scan
+
+Find the tasks in an Obsidian vault that a swamp extension could do.
 
 List the open tasks in an Obsidian vault, leaving out templates and daily notes,
 and ask Jev whether a swamp extension could do each one.
@@ -31,13 +33,19 @@ candidates against the registry and logging them in Capture come next.
   `workflows/workflow-obsidian-task-scan.yaml`
 - Delivery method: `scheduled_workflow`
 
+Install the extension. This also pulls `@swamp/typesafe-ai` and the workflow
+`@puddleworks/obsidian-task-scan`:
+
+```bash
+swamp extension pull @puddleworks/obsidian-task-scan
+```
+
 Create the model instances the workflow runs. `excludeFolders` is optional and
 defaults to `["Templates"]`; daily notes (`YYYY-MM-DD.md`) are always left out.
 
 ```bash
 swamp model create @puddleworks/obsidian-task-scan obsidian-task-scan-model \
-  --global-arg vaultPath=<vaultPath>
-swamp extension pull @swamp/typesafe-ai
+  --global-arg vaultPath=/path/to/your/vault
 swamp vault create local_encryption typesafe
 swamp vault put typesafe TYPESAFE_API_KEY    # prompts for the key
 swamp model create @swamp/typesafe-ai jev \
@@ -46,7 +54,8 @@ swamp model create @swamp/typesafe-ai jev \
   --global-arg model=jev-1.13-free
 ```
 
-The task text of every task that is not withheld is sent to the Jev endpoint.
+The text and note path of every task that is not withheld are sent to the Jev
+endpoint. A withheld task is never sent.
 
 Run it:
 
@@ -76,7 +85,7 @@ This example runs Mondays at 08:00. Scheduled runs need `swamp serve`; add `--in
 Test it:
 
 ```bash
-DENO=$(swamp doctor extensions --json | jq -r '.denoPath')
-$DENO check extensions/models/obsidian_task_scan.ts
-$DENO test --allow-read --allow-write extensions/models/obsidian_task_scan_test.ts
+make test
+make contracts-check guardrails-check
+make publish VISIBILITY=public DRY_RUN=1
 ```
