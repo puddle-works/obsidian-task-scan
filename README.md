@@ -60,8 +60,9 @@ swamp model create @swamp/typesafe-ai jev \
   --global-arg model=jev-1.13-free
 ```
 
-The text and note path of every task that is not withheld are sent to the Jev
-endpoint. A withheld task is never sent.
+The text, note path and nearest heading of every task that is not withheld are
+sent to the Jev endpoint. A withheld task is never sent, and neither is a
+heading that looks like it holds a secret.
 
 Run it:
 

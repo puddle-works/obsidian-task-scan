@@ -514,6 +514,21 @@ Deno.test("the question names the heading and asks for a reusable extension", as
   assertEquals(criteria.extension.includes("reusable"), true);
 });
 
+Deno.test("a heading that looks like a secret is not sent to Jev", async () => {
+  const task = {
+    path: "p.md",
+    line: 2,
+    text: "Rotate the router login",
+    heading: "password: hunter2",
+  };
+  const { items, batches } = await prepare([task], 10);
+  assertEquals(items[0].withheld, false);
+  assertEquals(
+    batches[0][items[0].id].instructions,
+    '"Rotate the router login" (note p.md)',
+  );
+});
+
 Deno.test("prepare splits the questions into batches of at most batchSize, leaving out withheld tasks", async () => {
   const tasks = Array.from({ length: 7 }, (_, i) => ({
     path: "a.md",

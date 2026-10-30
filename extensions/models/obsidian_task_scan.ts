@@ -261,11 +261,13 @@ export async function prepare(
       batch = {};
       batches.push(batch);
     }
+    // A heading that looks like a secret stays out of the question.
+    const heading = task.heading && !looksSecret(task.heading)
+      ? `, under the heading "${task.heading}"`
+      : "";
     batch[item.id] = {
       type: "choice",
-      instructions: `"${task.text}" (note ${task.path}${
-        task.heading ? `, under the heading "${task.heading}"` : ""
-      })`,
+      instructions: `"${task.text}" (note ${task.path}${heading})`,
       criteria: CRITERIA,
     };
   }
