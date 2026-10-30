@@ -15,6 +15,7 @@ import {
   ClassifyArgsSchema,
   type GlobalArgs,
   GlobalArgsSchema,
+  GUIDANCE,
   looksSecret,
   model,
   prepare,
@@ -38,8 +39,7 @@ const QUIET = { info: () => {} };
 
 /** A logger that records each line. */
 function recordingLogger() {
-  const lines: Array<{ message: string; props?: Record<string, unknown> }> =
-    [];
+  const lines: Array<{ message: string; props?: Record<string, unknown> }> = [];
   return {
     lines,
     logger: {
@@ -252,18 +252,21 @@ Deno.test("empty vault returns no tasks and scanning never changes vault files",
 
 Deno.test("result schema requires a positive line number and task text", async () => {
   const vault = await makeVault({ "a.md": "- [ ] task" });
-  const { items, questions } = await prepare(await run(DEFAULTS, vault));
+  const prepared = await prepare(await run(DEFAULTS, vault), 10);
   assertEquals(
     ResultSchema.safeParse({
       args: DEFAULTS,
-      items,
-      questions,
+      guidance: GUIDANCE,
+      ...prepared,
       ranAt: new Date().toISOString(),
     }).success,
     true,
   );
   for (
-    const item of [{ ...items[0], line: undefined }, { ...items[0], line: 0 }]
+    const item of [{ ...prepared.items[0], line: undefined }, {
+      ...prepared.items[0],
+      line: 0,
+    }]
   ) {
     assertEquals(ResultSchema.shape.items.safeParse([item]).success, false);
   }
@@ -351,13 +354,17 @@ Deno.test("prepare asks one choice question per task and withholds secret-lookin
       text: "store token=abc123 somewhere safe",
     },
   ];
-  const { items, questions } = await prepare(tasks);
+  const { items, batches } = await prepare(tasks, 10);
   assertEquals(items.map((i) => i.withheld), [false, true]);
   assertEquals(items[0].id, await taskId(tasks[0]));
-  assertEquals(Object.keys(questions), [items[0].id]);
-  const question = questions[items[0].id];
+  assertEquals(batches.map((b) => Object.keys(b)), [[items[0].id]]);
+  const question = batches[0][items[0].id];
   assertEquals(question.type, "choice");
-  assertEquals(Object.keys(question.criteria).sort(), ["extension", "person"]);
+  assertEquals(Object.keys(question.criteria).sort(), [
+    "extension",
+    "one_off",
+    "person",
+  ]);
   assertEquals(
     question.instructions.includes("Check CI on every repo each morning"),
     true,
@@ -382,8 +389,11 @@ Deno.test("run writes the prepared items and questions into the result", async (
     },
   });
   const result = ResultSchema.parse(writes[0]);
-  assertEquals(result.items, (await prepare(tasks)).items);
-  assertEquals(Object.keys(result.questions), [result.items[0].id]);
+  assertEquals(result.items, (await prepare(tasks, 150)).items);
+  assertEquals(result.batches.map((b) => Object.keys(b)), [[
+    result.items[0].id,
+  ]]);
+  assertEquals(result.guidance.includes("reusable"), true);
 });
 
 // Classifying with Jev's answers
@@ -402,13 +412,15 @@ Deno.test("classify marks extension answers at or above the threshold as candida
     { path: "a.md", line: 3, text: "Fix the garage door" },
     { path: "a.md", line: 4, text: "Book the dentist" },
     { path: "a.md", line: 5, text: "token=abc123 for the NAS" },
-  ]);
+  ], 10);
   const [ci, insurance, garage, dentist, secret] = items;
-  const out = classify(items, {
-    [ci.id]: answer("extension", 1),
-    [insurance.id]: answer("extension", 0.48),
-    [garage.id]: answer("person", 1),
-  }, 0.7);
+  const out = classify(items, [
+    { [ci.id]: answer("extension", 1) },
+    {
+      [insurance.id]: answer("extension", 0.48),
+      [garage.id]: answer("one_off", 1),
+    },
+  ], 0.5);
   assertEquals(
     out.items.map((i) => [i.text, i.classification, i.confidence]),
     [
@@ -432,12 +444,12 @@ Deno.test("classify method writes one classified resource", async () => {
     path: "a.md",
     line: 1,
     text: "Check CI every morning",
-  }]);
+  }], 10);
   const args = ClassifyArgsSchema.parse({
     tasks: items,
-    answers: { [items[0].id]: answer("extension", 0.9) },
+    answers: [{ [items[0].id]: answer("extension", 0.6) }],
   });
-  assertEquals(args.threshold, 0.7);
+  assertEquals(args.threshold, 0.5);
   const writes: Array<{ specName: string; data: Record<string, unknown> }> = [];
   const out = await model.methods.classify.execute(args, {
     globalArgs: SETTINGS,
@@ -451,11 +463,117 @@ Deno.test("classify method writes one classified resource", async () => {
   assertEquals(writes[0].specName, "classified");
   const classified = ClassifiedSchema.parse(writes[0].data);
   assertEquals(classified.items[0].classification, "candidate");
-  assertEquals(classified.threshold, 0.7);
+  assertEquals(classified.threshold, 0.5);
 });
 
 Deno.test("classify arguments default to no answers", () => {
-  assertEquals(ClassifyArgsSchema.parse({ tasks: [] }).answers, {});
+  assertEquals(ClassifyArgsSchema.parse({ tasks: [] }).answers, []);
+});
+
+Deno.test("each task carries the nearest heading above it, outside code fences", async () => {
+  const vault = await makeVault({
+    "p.md": [
+      "- [ ] before any heading",
+      "# Product",
+      "## Release",
+      "- [ ] deploy",
+      "```",
+      "# not a heading",
+      "```",
+      "  - [ ] test",
+      "### Later ###",
+      "- [ ] package",
+      "#tag is not a heading",
+      "- [ ] update",
+    ].join("\n"),
+  });
+  assertEquals(
+    (await run(DEFAULTS, vault)).map((t) => [t.text, t.heading]),
+    [
+      ["before any heading", undefined],
+      ["deploy", "Release"],
+      ["test", "Release"],
+      ["package", "Later"],
+      ["update", "Later"],
+    ],
+  );
+});
+
+Deno.test("the question names the heading and asks for a reusable extension", async () => {
+  const task = { path: "p.md", line: 4, text: "deploy", heading: "Release" };
+  const { items, batches } = await prepare([task], 10);
+  assertEquals(
+    items[0].id,
+    await taskId({ path: "p.md", line: 4, text: "deploy" }),
+  );
+  const { instructions, criteria } = batches[0][items[0].id];
+  assertEquals(
+    instructions,
+    '"deploy" (note p.md, under the heading "Release")',
+  );
+  assertEquals(criteria.extension.includes("reusable"), true);
+});
+
+Deno.test("a heading that looks like a secret is not sent to Jev", async () => {
+  const task = {
+    path: "p.md",
+    line: 2,
+    text: "Rotate the router login",
+    heading: "password: hunter2",
+  };
+  const { items, batches } = await prepare([task], 10);
+  assertEquals(items[0].withheld, false);
+  assertEquals(
+    batches[0][items[0].id].instructions,
+    '"Rotate the router login" (note p.md)',
+  );
+});
+
+Deno.test("prepare splits the questions into batches of at most batchSize, leaving out withheld tasks", async () => {
+  const tasks = Array.from({ length: 7 }, (_, i) => ({
+    path: "a.md",
+    line: i + 1,
+    text: i === 3 ? "token=abc123" : `task ${i}`,
+  }));
+  const { items, batches } = await prepare(tasks, 3);
+  assertEquals(items.length, 7);
+  const ids = items.filter((i) => !i.withheld).map((i) => i.id);
+  assertEquals(batches.map((b) => Object.keys(b)), [
+    ids.slice(0, 3),
+    ids.slice(3, 6),
+  ]);
+  assertEquals((await prepare([], 3)).batches, []);
+});
+
+Deno.test("batchSize defaults to 150 and must be a positive whole number", () => {
+  assertEquals(GlobalArgsSchema.parse(SETTINGS).batchSize, 150);
+  for (const batchSize of [0, 1.5, -1]) {
+    assertEquals(
+      GlobalArgsSchema.safeParse({ ...SETTINGS, batchSize }).success,
+      false,
+      String(batchSize),
+    );
+  }
+});
+
+Deno.test("run batches the questions by the batchSize setting", async () => {
+  const tasks = Array.from({ length: 5 }, (_, i) => ({
+    path: "a.md",
+    line: i + 1,
+    text: `task ${i}`,
+  }));
+  using _ = stub(behaviour, "run", () => Promise.resolve(tasks));
+  const writes: Array<Record<string, unknown>> = [];
+  await model.methods.run.execute(RunArgsSchema.parse({}), {
+    globalArgs: { ...SETTINGS, batchSize: 2 },
+    logger: recordingLogger().logger,
+    writeResource: (_spec, name, data) => {
+      writes.push(data);
+      return Promise.resolve({ name });
+    },
+  });
+  const result = ResultSchema.parse(writes[0]);
+  assertEquals(result.batches.map((b) => Object.keys(b).length), [2, 2, 1]);
 });
 
 Deno.test("methods log at info on entry and completion, never the task text", async () => {
@@ -474,16 +592,22 @@ Deno.test("methods log at info on entry and completion, never the task text", as
   });
   assertEquals(ran.lines.length, 2);
   assertEquals(ran.lines[0].props?.folder, "");
-  assertEquals(ran.lines[1].props, { tasks: 2, withheld: 1, questions: 1 });
+  assertEquals(ran.lines[1].props, {
+    tasks: 2,
+    withheld: 1,
+    questions: 1,
+    batches: 1,
+  });
 
   const { items } = await prepare([
     { path: "a.md", line: 1, text: "Post weekly metrics to Slack" },
-  ]);
+  ], 150);
   const classified = recordingLogger();
   await model.methods.classify.execute(
     ClassifyArgsSchema.parse({
       tasks: items,
-      answers: { [items[0].id]: answer("extension", 0.9) },
+      // Two requests: the second one answered nothing.
+      answers: [{ [items[0].id]: answer("extension", 0.9) }, {}],
     }),
     { globalArgs: SETTINGS, logger: classified.logger, writeResource: write },
   );
@@ -495,6 +619,15 @@ Deno.test("methods log at info on entry and completion, never the task text", as
   for (const text of ["Post weekly metrics", "abc123", "a.md"]) {
     assertEquals(logged.includes(text), false, text);
   }
+});
+
+Deno.test("the current model version has an upgrade entry", () => {
+  const upgrades = model.upgrades.map((u) => u.toVersion);
+  assertEquals(upgrades.at(-1), model.version);
+  assertEquals(
+    model.upgrades.at(-1)?.upgradeAttributes({ vaultPath: "/v" }),
+    { vaultPath: "/v" },
+  );
 });
 
 Deno.test("manifest is public, ships the workflow and depends on @swamp/typesafe-ai", () => {

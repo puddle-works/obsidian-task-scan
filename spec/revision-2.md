@@ -18,7 +18,7 @@ Once a week, the open tasks in an Obsidian vault that a swamp extension could do
 
 - Reading the open task lines ("- [ ]") in the vault's Markdown notes, optionally limited to one subfolder
 - Leaving out templates and daily notes, which repeat the same routine tasks
-- Deciding for each task whether a swamp extension could do it, using a model, with a confidence
+- Deciding for each task, using a model and with a confidence, whether it is worth a reusable swamp extension, a one-off job software could do, or needs a person; the model sees the task with its note and nearest heading
 - Searching the swamp extension registry for an extension that already covers each candidate
 - Creating one draft request in Capture for each candidate no extension covers
 - Running on a weekly schedule, and on demand
@@ -46,7 +46,7 @@ Once a week, the open tasks in an Obsidian vault that a swamp extension could do
 
 ## Acceptance criteria
 
-- **AC1** Every open task outside templates and daily notes is classified as an extension candidate or not, with the model's confidence; a task is a candidate at 0.7 or above.
+- **AC1** Every open task outside templates and daily notes is classified as worth an extension, a one-off job or needing a person, with the model's confidence; a task is a candidate when the model says it is worth an extension with at least the configured confidence (default 0.5).
 - **AC2** A candidate that an existing registry extension covers is reported with that extension's name and is not logged in Capture.
 - **AC3** Each other candidate becomes one draft request in Capture, titled from the task, with the vault-relative file path, line and task text in its description.
 - **AC4** Running again with no vault changes creates nothing new in Capture.
