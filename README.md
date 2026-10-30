@@ -14,9 +14,11 @@ The app runs on a schedule. You can also run it now from puddle with the form be
 | Subfolder of the vault to scan, relative to the vault root. Empty scans the whole vault. | string | empty |
 
 **You get:** every open task with its file and line, marked `candidate` (Jev says
-an extension could do it, with at least 0.7 confidence), `not_candidate`,
+it is worth a reusable extension, with at least 0.5 confidence), `not_candidate`
+(a one-off job or one that needs a person),
 `withheld` (it looks like it holds a secret, so it was never sent to Jev) or
-`unclassified` (Jev could not be reached; the next run tries again).
+`unclassified` (Jev could not be reached, or turned the request away; the next
+run tries again).
 
 ## For the builder
 
@@ -42,6 +44,10 @@ swamp extension pull @puddleworks/obsidian-task-scan
 
 Create the model instances the workflow runs. `excludeFolders` is optional and
 defaults to `["Templates"]`; daily notes (`YYYY-MM-DD.md`) are always left out.
+`batchSize` is optional and defaults to 150: the workflow asks Jev about that
+many tasks per request, one request at a time, because Jev's free tier turns
+away requests of about 800 questions. A request that fails leaves only its own
+tasks unclassified.
 
 ```bash
 swamp model create @puddleworks/obsidian-task-scan obsidian-task-scan-model \
@@ -70,7 +76,8 @@ swamp data query 'behavior("obsidian-task-scan-model") && name == "classified"' 
 ```
 
 Each item has `path` (relative to the vault), `line` (1-based), trimmed `text`,
-`id` (stable across runs: from the path and text), `classification`, and for
+`heading` (the nearest heading above it, sent to Jev as context), `id` (stable
+across runs: from the path and text), `classification`, and for
 classified tasks `choice` and `confidence`. `counts` totals each classification.
 
 Schedule it:

@@ -17,13 +17,13 @@ inputs:
   required: []
 
 jobs:
-  - name: main
-    description: "List the vault's open tasks, ask Jev about each, and classify them."
+  - name: scan
+    description: "List the vault's open tasks, leaving out templates and daily notes, with the questions for Jev in batches."
     dependsOn: []
     weight: 0
     steps:
       - name: run
-        description: "The open tasks, leaving out templates and daily notes, and one question for Jev about each."
+        description: "The open tasks and the questions for Jev about them."
         dependsOn: []
         weight: 0
         allowFailure: false
@@ -33,32 +33,45 @@ jobs:
           methodName: run
           inputs:
             folder: ${{ inputs.folder }}
-      - name: ask
-        description: "Ask Jev whether a swamp extension could do each task. A failure here leaves the tasks unclassified."
-        dependsOn:
-          - step: run
-            condition:
-              type: succeeded
+  - name: ask
+    description: "Ask Jev whether a swamp extension could do each task, one request per batch. A failed request leaves its tasks unclassified."
+    dependsOn:
+      - job: scan
+        condition:
+          type: succeeded
+    weight: 0
+    steps:
+      - name: ask-${{ self._index }}
+        description: "Ask Jev about one batch of tasks."
+        forEach:
+          item: batch
+          in: ${{ data.latest("obsidian-task-scan-model", "result").attributes.batches }}
+        concurrency: 1
+        dependsOn: []
         weight: 0
         allowFailure: true
-        guard: ${{ size(steps.run.outputs.questions) == 0 }}
         task:
           type: model_method
           modelIdOrName: jev
           methodName: ask
           inputs:
-            name: obsidian-task-scan
-            state: "Classify each task."
-            questions: ${{ steps.run.outputs.questions }}
+            name: obsidian-task-scan-${{ self._index }}
+            state: ${{ steps.run.outputs.guidance }}
+            questions: ${{ self.batch }}
+  - name: classify
+    description: "Classify every task from the answers Jev gave."
+    dependsOn:
+      - job: scan
+        condition:
+          type: succeeded
+      - job: ask
+        condition:
+          type: always
+    weight: 0
+    steps:
       - name: classify
         description: "Every task with its classification (candidate, not_candidate, unclassified or withheld) and confidence."
-        dependsOn:
-          - step: run
-            condition:
-              type: succeeded
-          - step: ask
-            condition:
-              type: always
+        dependsOn: []
         weight: 0
         allowFailure: false
         task:
@@ -67,4 +80,4 @@ jobs:
           methodName: classify
           inputs:
             tasks: ${{ steps.run.outputs.items }}
-            answers: '${{ has(steps.ask) && steps.ask.status == "succeeded" ? steps.ask.outputs.answers : {} }}'
+            answers: '${{ steps.filter(k, k.startsWith("ask-") && steps[k].status == "succeeded").map(k, steps[k].outputs.answers) }}'

@@ -99,14 +99,16 @@ classifying the tasks. Registry matching and Capture logging come next.
 - `vaultPath` — Absolute path to the Obsidian vault folder.
 - `excludeFolders` — Vault folders to leave out (default `["Templates"]`).
   Daily notes (`YYYY-MM-DD.md`) are always left out.
+- `batchSize` — Most tasks to ask Jev about in one request (default 150).
 
 The workflow also runs a `jev` instance of `@swamp/typesafe-ai`, whose API key
 comes from a swamp vault.
 
 ## Output
 
-Every open task with its file, line, stable id, classification (`candidate`,
-`not_candidate`, `withheld` or `unclassified`) and Jev's confidence.
+Every open task with its file, line, nearest heading, stable id, Jev's choice
+(`extension`, `one_off` or `person`) and confidence, and its classification
+(`candidate`, `not_candidate`, `withheld` or `unclassified`).
 
 ## Out of scope
 

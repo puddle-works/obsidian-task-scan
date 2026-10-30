@@ -29,6 +29,9 @@ export const GlobalArgsSchema = z.object({
   excludeFolders: z.array(z.string().min(1)).default(["Templates"]).describe(
     "Vault folders to leave out, relative to the vault root. Daily notes (YYYY-MM-DD.md) are always left out.",
   ),
+  batchSize: z.number().int().min(1).default(150).describe(
+    "Most questions to send Jev in one request. Jev's free tier turns away requests of about 800 questions.",
+  ),
 });
 /** The settings as given, before defaults apply. */
 export type GlobalArgs = z.input<typeof GlobalArgsSchema>;
@@ -52,6 +55,8 @@ export const TaskSchema = z.object({
   line: z.number().int().min(1),
   /** The task text after the checkbox, trimmed. */
   text: z.string().min(1),
+  /** The nearest heading above the task, if there is one. */
+  heading: z.string().min(1).optional(),
 });
 /** One open task line. */
 export type Task = z.infer<typeof TaskSchema>;
@@ -79,8 +84,10 @@ export type ChoiceQuestion = z.infer<typeof ChoiceQuestionSchema>;
 export const ResultSchema = z.object({
   args: RunArgsSchema,
   items: z.array(PreparedTaskSchema),
-  /** One question per task that is not withheld, keyed by task id. */
-  questions: z.record(z.string(), ChoiceQuestionSchema),
+  /** What Jev needs to know for every question: the `state` for `ask`. */
+  guidance: z.string(),
+  /** One question per task that is not withheld, keyed by task id, in requests of at most `batchSize`. */
+  batches: z.array(z.record(z.string(), ChoiceQuestionSchema)),
   ranAt: z.iso.datetime(),
 });
 /** The `result` resource. */
@@ -138,6 +145,7 @@ export async function run(
   for (const path of notes) {
     const lines = (await Deno.readTextFile(`${root}/${path}`)).split("\n");
     let fence: "```" | "~~~" | undefined;
+    let heading: string | undefined;
     for (let index = 0; index < lines.length; index++) {
       const line = lines[index].replace(/\r$/, "");
       const marker = /^\s*(```|~~~)/.exec(line)?.[1] as
@@ -149,12 +157,23 @@ export async function run(
         continue;
       }
       if (fence) continue;
+      const title = HEADING.exec(line)?.[1].trim();
+      if (title) {
+        heading = title;
+        continue;
+      }
       const match = taskLine.exec(line);
-      if (match) tasks.push({ path, line: index + 1, text: match[1].trim() });
+      if (match) {
+        const task: Task = { path, line: index + 1, text: match[1].trim() };
+        tasks.push(heading ? { ...task, heading } : task);
+      }
     }
   }
   return tasks;
 }
+
+/** A Markdown heading line; "#tag" is not one. */
+const HEADING = /^ {0,3}#{1,6}\s+(.*?)(?:\s+#+)?\s*$/;
 
 /** A daily note's file name. */
 const DAILY_NOTE = /^\d{4}-\d{2}-\d{2}\.md$/;
@@ -202,21 +221,33 @@ export function looksSecret(text: string): boolean {
   return SECRET_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+/** Said once per request rather than in every question, to keep requests small. */
+export const GUIDANCE =
+  "Each question is a task from one person's to-do list, with the note it is in and the nearest heading above it. " +
+  "Decide whether it is worth building a reusable swamp extension (a program calling APIs or CLIs, run on demand or on a schedule) " +
+  "to do the task, or a recurring version of it, for them.";
+
 const CRITERIA = {
   extension:
-    "Software could do it end to end through APIs or CLIs, with no human judgement or physical action.",
+    "A reusable extension: software can do it, and it recurs or helps others.",
+  one_off:
+    "Software can do it, but it is a one-off setup, install or clean-up.",
   person:
-    "It needs a person: a physical action, a conversation, learning, a decision or creative work.",
+    "It needs a person: physical, a conversation, learning, a decision or creative work.",
 };
 
-/** Give each task its id and withheld flag, and ask one question per task that is not withheld. */
+/**
+ * Give each task its id and withheld flag, and ask one question per task that
+ * is not withheld, at most `batchSize` questions to a request.
+ */
 export async function prepare(
   tasks: Task[],
+  batchSize: number,
 ): Promise<
-  { items: PreparedTask[]; questions: Record<string, ChoiceQuestion> }
+  { items: PreparedTask[]; batches: Record<string, ChoiceQuestion>[] }
 > {
   const items: PreparedTask[] = [];
-  const questions: Record<string, ChoiceQuestion> = {};
+  const batches: Record<string, ChoiceQuestion>[] = [];
   for (const task of tasks) {
     const item = {
       ...task,
@@ -225,16 +256,20 @@ export async function prepare(
     };
     items.push(item);
     if (item.withheld) continue;
-    questions[item.id] = {
+    let batch = batches.at(-1);
+    if (!batch || Object.keys(batch).length >= batchSize) {
+      batch = {};
+      batches.push(batch);
+    }
+    batch[item.id] = {
       type: "choice",
-      instructions:
-        `Task from a personal to-do list: "${task.text}" (note ${task.path}). ` +
-        "Could a swamp extension (a program calling APIs or CLIs, run on demand or on a schedule) " +
-        "do this task, or a recurring version of it, for the owner?",
+      instructions: `"${task.text}" (note ${task.path}${
+        task.heading ? `, under the heading "${task.heading}"` : ""
+      })`,
       criteria: CRITERIA,
     };
   }
-  return { items, questions };
+  return { items, batches };
 }
 
 /** One answer from Jev's `ask`: the choice it made and how sure it is. */
@@ -248,11 +283,11 @@ export type Answer = z.infer<typeof AnswerSchema>;
 /** Arguments for `classify`: the tasks from `run` and Jev's answers. */
 export const ClassifyArgsSchema = z.object({
   tasks: z.array(PreparedTaskSchema).describe("The items from `run`."),
-  answers: z.record(z.string(), AnswerSchema).default({}).describe(
-    "Jev's answers keyed by task id. Empty when the model could not be reached.",
+  answers: z.array(z.record(z.string(), AnswerSchema)).default([]).describe(
+    "Jev's answers for each request that succeeded, keyed by task id. Tasks in a request that failed stay unclassified.",
   ),
-  threshold: z.number().min(0).max(1).default(0.7).describe(
-    'Least confidence in an "extension" answer for the task to be a candidate.',
+  threshold: z.number().min(0).max(1).default(0.5).describe(
+    'Least confidence in an "extension" answer for the task to be a candidate. Jev\'s confidence is its own measure, lower than the probability it gives its answer.',
   ),
 });
 /** Arguments for `classify`, after defaults apply. */
@@ -288,9 +323,10 @@ export type Classified = z.infer<typeof ClassifiedSchema>;
 /** Turn Jev's answers into a classification for every task. */
 export function classify(
   tasks: PreparedTask[],
-  answers: Record<string, Answer>,
+  batches: Record<string, Answer>[],
   threshold: number,
 ): Pick<Classified, "items" | "counts"> {
+  const answers: Record<string, Answer> = Object.assign({}, ...batches);
   const counts = {
     candidate: 0,
     not_candidate: 0,
@@ -335,12 +371,20 @@ interface MethodContext {
 /** The `@puddleworks/obsidian-task-scan` model type: methods `run` and `classify`. */
 export const model = {
   type: "@puddleworks/obsidian-task-scan",
-  version: "2026.10.23.2",
+  version: "2026.10.23.4",
   globalArguments: GlobalArgsSchema,
+  upgrades: [
+    {
+      toVersion: "2026.10.23.4",
+      description:
+        "Add batchSize, which defaults to 150, so existing settings need no change",
+      upgradeAttributes: (old: Record<string, unknown>) => old,
+    },
+  ],
   resources: {
     result: {
       description:
-        "The open tasks, each with its file, line, id and withheld flag, and the questions for Jev.",
+        "The open tasks, each with its file, line, id and withheld flag, and the questions for Jev in batches.",
       schema: ResultSchema,
       lifetime: "infinite" as const,
       garbageCollection: 20,
@@ -365,7 +409,11 @@ export const model = {
         const tasks = await behaviour.run(args, context.globalArgs);
         const result: Result = {
           args,
-          ...await prepare(tasks),
+          guidance: GUIDANCE,
+          ...await prepare(
+            tasks,
+            GlobalArgsSchema.parse(context.globalArgs).batchSize,
+          ),
           ranAt: new Date().toISOString(),
         };
         const handle = await context.writeResource("result", "result", result);
@@ -375,7 +423,11 @@ export const model = {
           {
             tasks: result.items.length,
             withheld: result.items.filter((i) => i.withheld).length,
-            questions: Object.keys(result.questions).length,
+            questions: result.batches.reduce(
+              (n, batch) => n + Object.keys(batch).length,
+              0,
+            ),
+            batches: result.batches.length,
           },
         );
         return { dataHandles: [handle] };
@@ -390,7 +442,10 @@ export const model = {
           "Classifying {tasks} tasks from {answers} answers",
           {
             tasks: args.tasks.length,
-            answers: Object.keys(args.answers).length,
+            answers: args.answers.reduce(
+              (n, batch) => n + Object.keys(batch).length,
+              0,
+            ),
           },
         );
         const classified: Classified = {
