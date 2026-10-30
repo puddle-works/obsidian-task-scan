@@ -1,0 +1,22 @@
+{
+  "extension": "@puddleworks/obsidian-task-scan",
+  "version": "2026.10.30.1",
+  "reviewedAt": "2026-10-30T15:49:45Z",
+  "dimensions": [
+    { "id": "credentials-secrets", "verdict": "pass", "note": "No secrets in settings; the Jev key lives in the separate @swamp/typesafe-ai instance, from a vault. A task whose text looks like a token, key, password or email is withheld and never sent. The heading now sent with each task is checked the same way and left out of the question when it looks like a secret (tested, and checked end to end against a mock Jev that logged every question)." },
+    { "id": "logging-quality", "verdict": "pass", "note": "run logs task, withheld, question and batch counts; classify logs task and answer counts, summed across batches (tested with two batches). Task text, headings and note paths are never logged (tested)." },
+    { "id": "error-handling", "verdict": "pass", "note": "Folder containment and existence are checked before any note is read, and only NotFound is caught. batchSize must be a whole number of at least 1 (tested). A failed Jev request fails only its own forEach step (allowFailure), and classify runs whatever the ask job's outcome." },
+    { "id": "testing-completeness", "verdict": "pass", "note": "34 tests on temp vaults, no network, including headings, batching, the batchSize setting, three-way answers, answers merged across batches, the upgrade entry and secret-looking headings. The workflow was also run end to end against a mock Jev: all batches answered, every second batch failing, Jev unreachable; templates and daily notes left out, withheld tasks never sent, vault checksum unchanged." },
+    { "id": "idempotency-resilience", "verdict": "pass", "note": "The vault is only read (tested; end-to-end checksum unchanged). A failed batch leaves its tasks unclassified and the next run asks again. The ask job reads the batches with data.latest because forEach.in resolves at job start; if two runs overlapped, answers for task ids the run did not list are ignored by classify, so the worst case is unclassified tasks, not wrong ones." },
+    { "id": "api-contracts", "verdict": "pass", "note": "No HTTP calls here; Jev is called by @swamp/typesafe-ai. Each batch's answers are checked against AnswerSchema (choice, confidence 0..1) when classify parses its arguments, and answers for unknown ids are ignored." },
+    { "id": "resource-management", "verdict": "pass", "note": "Only Deno.stat, lstat, readDir and readTextFile, which hold no handles open. No temporary files." },
+    { "id": "published-surface-hygiene", "verdict": "pass", "note": "README uses /path/to/your/vault and says the text, note path and heading of each task that is not withheld are sent to Jev. Tests use made-up tasks and someone@example.com. No hostnames, IPs or personal paths in shipped files." },
+    { "id": "schema-strictness", "verdict": "pass", "note": "All schemas are plain z.object except AnswerSchema, a looseObject on purpose: typesafe-ai answers carry extra fields such as probabilities, and only choice and confidence are read. heading is optional and non-empty." },
+    { "id": "lifetime-gc", "verdict": "pass", "note": "result: infinite, keep 20. classified: infinite, keep 20." },
+    { "id": "crud-completeness", "verdict": "na", "note": "Not a CRUD lifecycle behavior; it reads a vault and classifies its tasks." },
+    { "id": "preflight-checks", "verdict": "pass", "note": "run checks folder containment and existence before reading. Nothing is written outside swamp data and there is no remote state." },
+    { "id": "instance-names", "verdict": "pass", "note": "run writes result/result and classify writes classified/classified; each method writes one instance." },
+    { "id": "data-access", "verdict": "na", "note": "No method reads stored state; the workflow passes run's outputs and each batch's answers to classify as inputs." },
+    { "id": "version-upgrades", "verdict": "pass", "note": "model.version moves from 2026.10.23.2 (published in 2026.10.27.1) to 2026.10.23.4, with an upgrade entry: the only new setting, batchSize, has a default, so existing settings carry over unchanged (tested). The result resource's shape changes (questions becomes guidance and batches), but no method reads an old result back." }
+  ]
+}
