@@ -1,6 +1,6 @@
 id: 0f449c58-6be3-4b5f-a3f4-5c106f6fd37c
 name: "@puddleworks/obsidian-task-scan"
-description: "Find the open tasks in an Obsidian vault that a swamp extension could do, using Jev to classify them."
+description: "Find the open tasks in an Obsidian vault that a swamp extension could do, using Jev to classify them, and log each one no extension covers in Capture."
 version: 1
 tags:
   puddle: "true"
@@ -81,3 +81,71 @@ jobs:
           inputs:
             tasks: ${{ steps.run.outputs.items }}
             answers: '${{ steps.filter(k, k.startsWith("ask-") && steps[k].status == "succeeded").map(k, steps[k].outputs.answers) }}'
+  - name: match
+    description: "Search the extension registry for each candidate, with a question for Jev about which extension found already does it."
+    dependsOn:
+      - job: classify
+        condition:
+          type: succeeded
+    weight: 0
+    steps:
+      - name: match
+        description: "What the registry search found for each candidate, and the questions for Jev's pick."
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+        task:
+          type: model_method
+          modelIdOrName: obsidian-task-scan-model
+          methodName: match
+          inputs:
+            tasks: ${{ steps.classify.outputs.items }}
+  - name: pick
+    description: "Ask Jev which extension found, if any, already does each candidate, one request per batch. A failed request leaves its candidates unlogged until the next run."
+    dependsOn:
+      - job: match
+        condition:
+          type: succeeded
+    weight: 0
+    steps:
+      - name: pick-${{ self._index }}
+        description: "Ask Jev about one batch of candidates."
+        forEach:
+          item: batch
+          in: ${{ data.latest("obsidian-task-scan-model", "matched").attributes.batches }}
+        concurrency: 1
+        dependsOn: []
+        weight: 0
+        allowFailure: true
+        task:
+          type: model_method
+          modelIdOrName: jev
+          methodName: ask
+          inputs:
+            name: obsidian-task-scan-pick-${{ self._index }}
+            state: ${{ steps.match.outputs.guidance }}
+            questions: ${{ self.batch }}
+  - name: log
+    description: "Log each candidate no extension covers in Capture as a draft request, and store every task's outcome. With logAs empty it only previews."
+    dependsOn:
+      - job: match
+        condition:
+          type: succeeded
+      - job: pick
+        condition:
+          type: always
+    weight: 0
+    steps:
+      - name: log
+        description: "Every task with its classification, confidence and outcome: logged (with the Capture link), matched, skipped or failed."
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+        task:
+          type: model_method
+          modelIdOrName: obsidian-task-scan-model
+          methodName: log
+          inputs:
+            tasks: ${{ steps.classify.outputs.items }}
+            matched: ${{ steps.match.outputs.items }}
+            answers: '${{ steps.filter(k, k.startsWith("pick-") && steps[k].status == "succeeded").map(k, steps[k].outputs.answers) }}'
