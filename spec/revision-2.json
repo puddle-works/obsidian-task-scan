@@ -45,6 +45,14 @@
       { "id": "AC5", "text": "The vault's files are unchanged after a run." },
       { "id": "AC6", "text": "Each run stores a result listing every task scanned with its classification, confidence, and whether it was logged (with the Capture request link), matched to an extension, skipped, or failed." },
       { "id": "AC7", "text": "If Capture or the model cannot be reached, the run says so and logs nothing it is unsure of; the tasks it missed are picked up by the next run." }
-    ]
+    ],
+    "recipe": {
+      "examples": [
+        { "phrase": "which tasks in my vault could a swamp extension do", "answer": "The open tasks Jev marked as worth a reusable extension (confidence 0.5 or more), each with its note path, line and text, and whether it was logged in Capture or matched to an existing extension." }
+      ],
+      "pieces": [],
+      "whenEmpty": "No open task in the vault looks worth an extension.",
+      "candidateExtensions": ["@swamp/typesafe-ai", "@puddleworks/capture"]
+    }
   }
 }

@@ -53,3 +53,10 @@ Once a week, the open tasks in an Obsidian vault that a swamp extension could do
 - **AC5** The vault's files are unchanged after a run.
 - **AC6** Each run stores a result listing every task scanned with its classification, confidence, and whether it was logged (with the Capture request link), matched to an extension, skipped, or failed.
 - **AC7** If Capture or the model cannot be reached, the run says so and logs nothing it is unsure of; the tasks it missed are picked up by the next run.
+
+## Recipe
+
+- **Example:** "which tasks in my vault could a swamp extension do" → The open tasks Jev marked as worth a reusable extension (confidence 0.5 or more), each with its note path, line and text, and whether it was logged in Capture or matched to an existing extension.
+- **When there is nothing to show:** No open task in the vault looks worth an extension.
+- **Pieces:** none
+- **Extensions to start from:** @swamp/typesafe-ai, @puddleworks/capture
