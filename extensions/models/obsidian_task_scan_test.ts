@@ -630,7 +630,7 @@ Deno.test("the current model version has an upgrade entry", () => {
   );
 });
 
-Deno.test("manifest is public, ships the workflow and depends on @swamp/typesafe-ai", () => {
+Deno.test("manifest is public, ships the workflow and depends on @swamp/typesafe-ai and @puddleworks/capture", () => {
   const manifest = parseYaml(
     Deno.readTextFileSync(new URL("../../manifest.yaml", import.meta.url)),
   ) as {
@@ -648,6 +648,9 @@ Deno.test("manifest is public, ships the workflow and depends on @swamp/typesafe
     "https://github.com/puddle-works/obsidian-task-scan",
   );
   assertEquals(manifest.license, "MIT");
-  assertEquals(manifest.dependencies, ["@swamp/typesafe-ai"]);
+  assertEquals(manifest.dependencies, [
+    "@swamp/typesafe-ai",
+    "@puddleworks/capture",
+  ]);
   assertEquals(manifest.workflows, ["workflow-obsidian-task-scan.yaml"]);
 });

@@ -88,8 +88,7 @@ Factory built the first draft from, is in [spec/outcome-spec.v1.json](spec/outco
 
 Each week, pick out the open tasks in an Obsidian vault that a swamp extension
 could do, check them against existing extensions, and log each new one in
-Capture as a draft request with its file and line. Built so far: listing and
-classifying the tasks. Registry matching and Capture logging come next.
+Capture as a draft request with its file and line.
 
 ## Inputs (the run form)
 
@@ -102,14 +101,27 @@ classifying the tasks. Registry matching and Capture logging come next.
   Daily notes (`YYYY-MM-DD.md`) are always left out.
 - `batchSize` — Most tasks to ask Jev about in one request (default 150).
 
+- `logAs` — Who the Capture requests are logged for (default empty: a
+  preview that logs nothing). Keep it the same: Capture holds each task's
+  idempotency key per person, so a new `logAs` logs every task again.
+- `captureModel` — The `@puddleworks/capture/requests` behavior to log with
+  (default `capture`).
+- `captureUrl` — Where Capture's request pages are served (default
+  `http://127.0.0.1:3002`).
+- `matchThreshold` — Least confidence in Jev's pick of an extension for a
+  candidate to count as covered (default 0.5).
+
 The workflow also runs a `jev` instance of `@swamp/typesafe-ai`, whose API key
-comes from a swamp vault.
+comes from a swamp vault, and calls `create_request` on the Capture behavior
+in process (`runModel`), so it needs the same swamp repo as Capture.
 
 ## Output
 
 Every open task with its file, line, nearest heading, stable id, Jev's choice
-(`extension`, `one_off` or `person`) and confidence, and its classification
-(`candidate`, `not_candidate`, `withheld` or `unclassified`).
+(`extension`, `one_off` or `person`) and confidence, its classification
+(`candidate`, `not_candidate`, `withheld` or `unclassified`), and its outcome
+(`logged` with the Capture request link, `matched` with the extension's name,
+`skipped` or `failed`, with the reason).
 
 ## Out of scope
 
