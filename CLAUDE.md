@@ -69,8 +69,9 @@ same name. The classifier is the published `@swamp/typesafe-ai`, pulled through
   push with `--yes`; `VISIBILITY` must equal `visibility:` in `manifest.yaml`.
 - Review reports live in `swamp-extension-review/` and are committed with the
   version they review.
-- `spec/` holds the agreed outcome spec (version 1) and revision 2. Names in
-  them are "the user" and emails are blank; `specHash` is as exported.
+- `spec/` holds the agreed outcome specs (versions 1 and 2) and revision 2,
+  the proposal version 2 was agreed from. Names in them are "the user" and
+  emails are blank; `specHash` is as exported.
 
 [adr]: https://github.com/puddle-works/puddleworks-apps/blob/main/docs/adr/ADR-004-one-repo-per-puddle.md
 
@@ -79,9 +80,9 @@ same name. The classifier is the published `@swamp/typesafe-ai`, pulled through
 Scan Obsidian vault for tasks that could become puddle requests. Built by puddleworks-factory from the app spec `obsidian-task-scan`;
 the specification below was agreed before it was handed over.
 
-Spec: [where it was agreed](http://localhost:3001/requests/6d47d38e-10cd-4b9a-991d-2e5a272be6b7), version 1, hash `28f25fc4c513835d9121c7bc4e8169ba74277cf6a3c650b42bdfeafc55dbc9e1`.
-This build follows revision 2, proposed in [spec/revision-2.json](spec/revision-2.json)
-and not yet agreed in Capture. Where they differ, revision 2 wins.
+Spec: Capture request #2 (`6d47d38e-10cd-4b9a-991d-2e5a272be6b7`), version 2, hash `79204e1bd5a0fa7403024beb40628604bbfc51c16fb6bfa54566753887c0b20d`,
+agreed in [spec/outcome-spec.v2.json](spec/outcome-spec.v2.json). Version 1, which the
+Factory built the first draft from, is in [spec/outcome-spec.v1.json](spec/outcome-spec.v1.json).
 
 ## Bounded purpose
 
