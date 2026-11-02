@@ -1,10 +1,10 @@
 # obsidian-task-scan: spec revision 2 (from version 1)
 
-Request: http://localhost:3001/requests/6d47d38e-10cd-4b9a-991d-2e5a272be6b7
+Request: Capture #2 in puddleworks-desk (id `6d47d38e-10cd-4b9a-991d-2e5a272be6b7`; version 1 was agreed at http://localhost:3001/requests/6d47d38e-10cd-4b9a-991d-2e5a272be6b7)
 
 **Reason for the change:** The owner wants the tasks a swamp extension could do found and logged in Capture, not a list of every open task: v1 on the TechWork vault listed 419 tasks, nearly all personal to-dos.
 
-Paste each section into Capture after **Revise**. Generated from `revision-2.json`.
+To agree it, in puddleworks-desk: `revise` request #2, write `revision-2.json`'s `content` with `edit_specification`, `propose` it, and the outcome owner `agree`s it. Generated from `revision-2.json`.
 
 ## Problem statement
 
@@ -34,13 +34,13 @@ Once a week, the open tasks in an Obsidian vault that a swamp extension could do
 
 - The vault is only read, never written
 - A task is logged in Capture at most once, across all runs, keyed on its file path and text
-- The Capture API key and the model API key come from a swamp vault, never from the repo
+- The model API key comes from a swamp vault, never from the repo
 - A task that looks like it holds a secret is not sent to the model or to Capture
-- Capture is reached only through its API (/api/v1)
+- Capture is reached only through the methods of the @puddleworks/capture extension, never by writing its data directly
 
 ## Assumptions
 
-- Capture accepts writes authenticated with an API key (puddle-works/puddleworks-capture#22)
+- Capture is the @puddleworks/capture swamp extension, in the same swamp repo as this workflow; its create_request takes an idempotency key, so a retry never makes a second request
 - The classifier is Jev through @swamp/typesafe-ai, as puddlerouter uses
 - Templates live in the vault's Templates folder and daily notes are named YYYY-MM-DD.md
 

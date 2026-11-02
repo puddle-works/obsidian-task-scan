@@ -28,12 +28,12 @@
     "constraints": [
       "The vault is only read, never written",
       "A task is logged in Capture at most once, across all runs, keyed on its file path and text",
-      "The Capture API key and the model API key come from a swamp vault, never from the repo",
+      "The model API key comes from a swamp vault, never from the repo",
       "A task that looks like it holds a secret is not sent to the model or to Capture",
-      "Capture is reached only through its API (/api/v1)"
+      "Capture is reached only through the methods of the @puddleworks/capture extension, never by writing its data directly"
     ],
     "assumptions": [
-      "Capture accepts writes authenticated with an API key (puddle-works/puddleworks-capture#22)",
+      "Capture is the @puddleworks/capture swamp extension, in the same swamp repo as this workflow; its create_request takes an idempotency key, so a retry never makes a second request",
       "The classifier is Jev through @swamp/typesafe-ai, as puddlerouter uses",
       "Templates live in the vault's Templates folder and daily notes are named YYYY-MM-DD.md"
     ],
