@@ -69,10 +69,12 @@ export const TaskSchema = z.object({
   path: z.string(),
   /** 1-based line number of the task in the note. */
   line: z.number().int().min(1),
-  /** The task text after the checkbox, trimmed. */
+  /** The task text after the checkbox, trimmed, without Obsidian Tasks fields. */
   text: z.string().min(1),
   /** The nearest heading above the task, if there is one. */
   heading: z.string().min(1).optional(),
+  /** The Obsidian Tasks recurrence rule, such as "every week on Friday". */
+  recurrence: z.string().min(1).optional(),
 });
 /** One open task line. */
 export type Task = z.infer<typeof TaskSchema>;
@@ -180,12 +182,64 @@ export async function run(
       }
       const match = taskLine.exec(line);
       if (match) {
-        const task: Task = { path, line: index + 1, text: match[1].trim() };
-        tasks.push(heading ? { ...task, heading } : task);
+        const { text, recurrence } = splitTasksFields(match[1].trim());
+        const task: Task = { path, line: index + 1, text };
+        if (heading) task.heading = heading;
+        if (recurrence) task.recurrence = recurrence;
+        tasks.push(task);
       }
     }
   }
   return tasks;
+}
+
+/** Emoji that start an Obsidian Tasks field, each optionally followed by U+FE0F. */
+const FIELD_EMOJI = "📅⏳🛫✅➕❌🔺⏫🔼🔽⏬🆔⛔🏁🔁";
+const FIELD_START = `(?:${[...FIELD_EMOJI].join("|")})\\uFE0F?`;
+/** Every Obsidian Tasks field but the recurrence rule, in the emoji format. */
+const EMOJI_FIELDS = new RegExp(
+  [
+    `(?:📅|⏳|🛫|✅|➕|❌)\\uFE0F?\\s*\\d{4}-\\d{2}-\\d{2}`,
+    `(?:🔺|⏫|🔼|🔽|⏬)\\uFE0F?`,
+    `🆔\\uFE0F?\\s*[\\w-]+`,
+    `⛔\\uFE0F?\\s*[\\w-]+(?:\\s*,\\s*[\\w-]+)*`,
+    `🏁\\uFE0F?\\s*\\w+`,
+  ].join("|"),
+  "gu",
+);
+/** The recurrence rule in the emoji format: up to the next field. */
+const EMOJI_RECURRENCE = new RegExp(
+  `🔁\\uFE0F?\\s*(.*?)\\s*(?=${FIELD_START}|$)`,
+  "u",
+);
+/** Obsidian Tasks fields in the Dataview format: [due:: 2026-10-23]. */
+const DATAVIEW_FIELDS =
+  /[[(](due|scheduled|start|completion|created|cancelled|priority|repeat|id|dependsOn|onCompletion)::\s*([^\])]*?)\s*[\])]/g;
+
+/**
+ * Split a task's Obsidian Tasks fields from its text. Dates, priority, ids and
+ * the on-completion action are dropped, so a recurring task keeps its id when
+ * its date rolls on; the recurrence rule is kept on its own. A task without
+ * fields is left exactly as it is, and so is one that is nothing but fields.
+ */
+export function splitTasksFields(
+  raw: string,
+): { text: string; recurrence?: string } {
+  let recurrence: string | undefined;
+  let text = raw.replace(DATAVIEW_FIELDS, (_, name: string, value: string) => {
+    if (name === "repeat" && value) recurrence = value;
+    return " ";
+  });
+  const rule = EMOJI_RECURRENCE.exec(text);
+  if (rule) {
+    recurrence = rule[1] || recurrence;
+    text = text.replace(rule[0], " ");
+  }
+  text = text.replace(EMOJI_FIELDS, " ");
+  if (text === raw) return { text };
+  text = text.replace(/\s{2,}/g, " ").trim();
+  if (!text) return { text: raw };
+  return recurrence ? { text, recurrence } : { text };
 }
 
 /** A Markdown heading line; "#tag" is not one. */
@@ -268,7 +322,8 @@ export async function prepare(
     const item = {
       ...task,
       id: await taskId(task),
-      withheld: looksSecret(task.text),
+      withheld: looksSecret(task.text) ||
+        looksSecret(task.recurrence ?? ""),
     };
     items.push(item);
     if (item.withheld) continue;
@@ -277,13 +332,9 @@ export async function prepare(
       batch = {};
       batches.push(batch);
     }
-    // A heading that looks like a secret stays out of the question.
-    const heading = task.heading && !looksSecret(task.heading)
-      ? `, under the heading "${task.heading}"`
-      : "";
     batch[item.id] = {
       type: "choice",
-      instructions: `"${task.text}" (note ${task.path}${heading})`,
+      instructions: describeTask(task),
       criteria: CRITERIA,
     };
   }
@@ -408,7 +459,8 @@ const STOPWORDS = new Set(
   its list many much show tell that the their there these this those was what
   whats with would you your please our not but which when where who why will
   into out off than then them they been being also just some such only own
-  same too very more most other another each every both few`
+  same too very more most other another each every both few use using keep
+  again later rather instead still actually useful kind way`
     .split(/\s+/),
 );
 
@@ -519,12 +571,16 @@ export const MatchArgsSchema = z.object({
 /** Arguments for `match`, after defaults apply. */
 export type MatchArgs = z.infer<typeof MatchArgsSchema>;
 
-/** How a question names a task: its text, note and a heading that looks safe. */
+/**
+ * How a question names a task: its text, note, a heading that looks safe and
+ * how it recurs. A heading that looks like a secret stays out.
+ */
 function describeTask(task: Task): string {
   const heading = task.heading && !looksSecret(task.heading)
     ? `, under the heading "${task.heading}"`
     : "";
-  return `"${task.text}" (note ${task.path}${heading})`;
+  const recurs = task.recurrence ? `, recurs ${task.recurrence}` : "";
+  return `"${task.text}" (note ${task.path}${heading}${recurs})`;
 }
 
 /**
@@ -680,6 +736,7 @@ export function requestDraft(
     task.text,
     "",
     `From the Obsidian vault: ${task.path}, line ${task.line}${heading}.`,
+    ...(task.recurrence ? [`It recurs ${task.recurrence}.`] : []),
     `Jev marked it worth a reusable swamp extension${sure}.`,
     `Searched the registry for: ${
       searched.query || "nothing (no content words)"

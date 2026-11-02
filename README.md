@@ -55,6 +55,11 @@ workflow `@puddleworks/obsidian-task-scan`:
 swamp extension pull @puddleworks/obsidian-task-scan
 ```
 
+Obsidian Tasks fields are not part of a task's text: dates (📅 ⏳ 🛫 ✅ ➕ ❌),
+priority, 🆔, ⛔ and 🏁 are dropped, in the emoji or the Dataview format
+(`[due:: 2026-10-23]`), and the 🔁 rule is kept as `recurrence`. So a recurring
+task keeps its id, and is logged once, when Obsidian rolls its date on.
+
 Create the model instances the workflow runs. `excludeFolders` is optional and
 defaults to `["Templates"]`; daily notes (`YYYY-MM-DD.md`) are always left out.
 `batchSize` is optional and defaults to 150: the workflow asks Jev about that
@@ -110,8 +115,8 @@ swamp data query 'behavior("obsidian-task-scan-model") && name == "logged"' --se
 ```
 
 Each item has `path` (relative to the vault), `line` (1-based), trimmed `text`,
-`heading` (the nearest heading above it, sent to Jev as context), `id` (stable
-across runs: from the path and text), `classification`, for classified tasks
+`heading` (the nearest heading above it, sent to Jev as context), `recurrence`
+for a recurring task, `id` (stable across runs: from the path and text), `classification`, for classified tasks
 `choice` and `confidence`, and `outcome`, with `request` (`id`, `number`,
 `url`) when logged, `extension` when matched, and `reason` when skipped or
 failed. `counts` totals each outcome. The request's idempotency key is
