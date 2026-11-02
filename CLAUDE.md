@@ -117,7 +117,9 @@ in process (`runModel`), so it needs the same swamp repo as Capture.
 
 ## Output
 
-Every open task with its file, line, nearest heading, stable id, Jev's choice
+Every open task with its file, line, nearest heading, recurrence rule (Obsidian
+Tasks dates, priority and ids are dropped from the text, so the id survives a
+date rolling on), stable id, Jev's choice
 (`extension`, `one_off` or `person`) and confidence, its classification
 (`candidate`, `not_candidate`, `withheld` or `unclassified`), and its outcome
 (`logged` with the Capture request link, `matched` with the extension's name,
