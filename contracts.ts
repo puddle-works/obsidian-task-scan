@@ -12,6 +12,7 @@ export const CONTRACTS: Contracts = {
       classified: "classified",
       matched: "matched",
       logged: "logged",
+      candidates: "candidates",
     },
   },
 };

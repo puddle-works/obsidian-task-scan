@@ -652,5 +652,8 @@ Deno.test("manifest is public, ships the workflow and depends on @swamp/typesafe
     "@swamp/typesafe-ai",
     "@puddleworks/capture",
   ]);
-  assertEquals(manifest.workflows, ["workflow-obsidian-task-scan.yaml"]);
+  assertEquals(manifest.workflows, [
+    "workflow-obsidian-task-scan.yaml",
+    "workflow-obsidian-task-scan-candidates.yaml",
+  ]);
 });

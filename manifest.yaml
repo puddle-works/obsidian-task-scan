@@ -1,6 +1,6 @@
 manifestVersion: 1
 name: "@puddleworks/obsidian-task-scan"
-version: "2026.11.02.2"
+version: "2026.11.05.1"
 description: "Find the open tasks in an Obsidian vault that a swamp extension could do, using Jev to classify them, and log each one no extension covers in Capture."
 repository: "https://github.com/puddle-works/obsidian-task-scan"
 license: MIT
@@ -8,6 +8,7 @@ visibility: public
 labels:
   - obsidian
   - ai
+  - puddlerouter-recipe
 additionalFiles:
   - README.md
   - LICENSE
@@ -15,6 +16,7 @@ models:
   - obsidian_task_scan.ts
 workflows:
   - workflow-obsidian-task-scan.yaml
+  - workflow-obsidian-task-scan-candidates.yaml
 dependencies:
   - "@swamp/typesafe-ai"
   - "@puddleworks/capture"
