@@ -12,6 +12,9 @@
  * each candidate no extension covers. With `logAs` empty nothing is logged:
  * the run is a preview.
  *
+ * `candidates` answers which tasks a swamp extension could do from the latest
+ * `log`, so the router's recipe needn't run a scan. It doesn't start one.
+ *
  * Output: every task with its file, line, classification, confidence and
  * outcome: logged (with the Capture link), matched, skipped or failed.
  *
@@ -349,13 +352,16 @@ export const AnswerSchema = z.looseObject({
 /** One parsed answer from Jev. */
 export type Answer = z.infer<typeof AnswerSchema>;
 
+/** Least confidence in an "extension" answer for a task to be a candidate. */
+const CANDIDATE_THRESHOLD = 0.5;
+
 /** Arguments for `classify`: the tasks from `run` and Jev's answers. */
 export const ClassifyArgsSchema = z.object({
   tasks: z.array(PreparedTaskSchema).describe("The items from `run`."),
   answers: z.array(z.record(z.string(), AnswerSchema)).default([]).describe(
     "Jev's answers for each request that succeeded, keyed by task id. Tasks in a request that failed stay unclassified.",
   ),
-  threshold: z.number().min(0).max(1).default(0.5).describe(
+  threshold: z.number().min(0).max(1).default(CANDIDATE_THRESHOLD).describe(
     'Least confidence in an "extension" answer for the task to be a candidate. Jev\'s confidence is its own measure, lower than the probability it gives its answer.',
   ),
 });
@@ -912,6 +918,62 @@ export async function logCandidates(
   }
 }
 
+/** Arguments for `candidates`: none, because it only reads the latest scan. */
+export const CandidatesArgsSchema = z.object({});
+
+/** What `candidates` stores: the whole answer, ready to show. */
+export const CandidatesSchema = z.object({
+  answer: z.string(),
+  /** How many candidates the answer lists. */
+  tasks: z.number().int().min(0),
+  /** When the scan it reads ran; null if none has. */
+  scannedAt: z.iso.datetime().nullable(),
+  answeredAt: z.iso.datetime(),
+});
+
+/** Said when the latest scan found no candidates: the spec's `whenEmpty`. */
+const NO_CANDIDATES = "No open task in the vault looks worth an extension.";
+
+const NO_SCAN =
+  "No scan has run yet, so there are no tasks to show. Asking doesn't start one: run the workflow @puddleworks/obsidian-task-scan.";
+
+function candidateStatus(item: LoggedItem): string {
+  if (item.outcome === "logged" && item.request) {
+    return `logged in Capture as #${item.request.number}`;
+  }
+  if (item.outcome === "matched") return `matched to ${item.extension ?? "?"}`;
+  if (item.wouldLog) return "not logged: the scan was a preview";
+  return item.reason ? `not logged: ${item.reason}` : "not logged";
+}
+
+/**
+ * The answer to "which tasks could a swamp extension do", from the latest scan
+ * or none. It lists every candidate itself, because a recipe's own list stops at
+ * 20 lines.
+ */
+export function candidatesAnswer(
+  scan: Logged | null,
+): { answer: string; tasks: number; scannedAt: string | null } {
+  if (!scan) return { answer: NO_SCAN, tasks: 0, scannedAt: null };
+  const candidates = scan.items.filter((i) => i.classification === "candidate");
+  const when = `${scan.loggedAt.slice(0, 10)} ${
+    scan.loggedAt.slice(11, 16)
+  } UTC`;
+  const count = candidates.length;
+  const lines = count === 0 ? [NO_CANDIDATES] : [
+    `${count} open ${
+      count === 1 ? "task" : "tasks"
+    } a swamp extension could do (Jev's confidence ${CANDIDATE_THRESHOLD} or more):`,
+    ...candidates.map((i) =>
+      `- ${i.path}:${i.line}: ${i.text} (${candidateStatus(i)})`
+    ),
+  ];
+  lines.push(
+    `From the latest scan, ${when}. Asking doesn't start a new scan.`,
+  );
+  return { answer: lines.join("\n"), tasks: count, scannedAt: scan.loggedAt };
+}
+
 /** What the methods call. Tests swap `run` and `exec` here to check the wiring without the real behaviour. */
 export const behaviour = { run, exec: swampExec };
 
@@ -930,10 +992,10 @@ interface MethodContext {
   runModel?: RunModel;
 }
 
-/** The `@puddleworks/obsidian-task-scan` model type: methods `run`, `classify`, `match` and `log`. */
+/** The `@puddleworks/obsidian-task-scan` model type: methods `run`, `classify`, `match`, `log` and `candidates`. */
 export const model = {
   type: "@puddleworks/obsidian-task-scan",
-  version: "2026.11.02.1",
+  version: "2026.11.05.1",
   globalArguments: GlobalArgsSchema,
   upgrades: [
     {
@@ -946,6 +1008,12 @@ export const model = {
       toVersion: "2026.11.02.1",
       description:
         "Add logAs (empty: preview), captureModel, captureUrl and matchThreshold, which all default, so existing settings need no change",
+      upgradeAttributes: (old: Record<string, unknown>) => old,
+    },
+    {
+      toVersion: "2026.11.05.1",
+      description:
+        "Add the read-only candidates method and its recipe; no settings changed",
       upgradeAttributes: (old: Record<string, unknown>) => old,
     },
   ],
@@ -975,6 +1043,13 @@ export const model = {
       description:
         "Every task with its classification, confidence and outcome: logged (with the Capture request link), matched, skipped or failed.",
       schema: LoggedSchema,
+      lifetime: "infinite" as const,
+      garbageCollection: 20,
+    },
+    candidates: {
+      description:
+        "The answer to which tasks a swamp extension could do, from the latest scan.",
+      schema: CandidatesSchema,
       lifetime: "infinite" as const,
       garbageCollection: 20,
     },
@@ -1137,6 +1212,24 @@ export const model = {
             { failed: logged.counts.failed },
           );
         }
+        return { dataHandles: [handle] };
+      },
+    },
+    candidates: {
+      description:
+        "Answer which open tasks a swamp extension could do, from the latest scan. It changes nothing outside its own answer, and doesn't start a scan.",
+      arguments: CandidatesArgsSchema,
+      execute: async (
+        _args: Record<string, never>,
+        context: MethodContext,
+      ) => {
+        const stored = await context.readResource?.("logged");
+        // A scan that can't be read fails here, rather than saying none ran.
+        const scan = stored ? LoggedSchema.parse(stored) : null;
+        const handle = await context.writeResource("candidates", "candidates", {
+          ...candidatesAnswer(scan),
+          answeredAt: new Date().toISOString(),
+        });
         return { dataHandles: [handle] };
       },
     },

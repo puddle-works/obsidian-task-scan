@@ -1,0 +1,32 @@
+id: ebb91017-6baf-42db-b3da-cbd62c4c37eb
+name: "@puddleworks/obsidian-task-scan-candidates"
+description: >-
+  Say which open tasks in the vault a swamp extension could do, from the latest
+  scan. The puddlerouterRecipe tag is the recipe puddlerouter reads: the phrase it
+  matches and the data to show. It calls the same method as this workflow's one
+  step, so running this workflow by hand gives the same answer. It starts no scan.
+version: 1
+tags:
+  maxReruns: "3"
+  maxWallClock: "1m"
+  puddlerouterRecipe: '{"id":"obsidian-task-scan-candidates","extension":"@puddleworks/obsidian-task-scan","pattern":"^which tasks in my vault could a swamp extension do[?.!]?$","dataName":"candidates","template":"{answer}"}'
+inputs:
+  type: object
+  properties: {}
+  required: []
+jobs:
+  - name: main
+    description: "Build the answer from the latest scan."
+    dependsOn: []
+    weight: 0
+    steps:
+      - name: candidates
+        description: "The candidates from the latest scan, and when it ran."
+        dependsOn: []
+        weight: 0
+        allowFailure: false
+        task:
+          type: model_method
+          modelIdOrName: obsidian-task-scan-model
+          methodName: candidates
+          inputs: {}

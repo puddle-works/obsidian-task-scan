@@ -69,7 +69,7 @@ same name. The classifier is the published `@swamp/typesafe-ai`, pulled through
   push with `--yes`; `VISIBILITY` must equal `visibility:` in `manifest.yaml`.
 - Review reports live in `swamp-extension-review/` and are committed with the
   version they review.
-- `spec/` holds the agreed outcome specs (versions 1 and 2) and revision 2,
+- `spec/` holds the agreed outcome specs (versions 1, 2 and 3) and revision 2,
   the proposal version 2 was agreed from. Names in them are "the user" and
   emails are blank; `specHash` is as exported.
 
@@ -80,8 +80,8 @@ same name. The classifier is the published `@swamp/typesafe-ai`, pulled through
 Scan Obsidian vault for tasks that could become puddle requests. Built by puddleworks-factory from the app spec `obsidian-task-scan`;
 the specification below was agreed before it was handed over.
 
-Spec: Capture request #2 (`6d47d38e-10cd-4b9a-991d-2e5a272be6b7`), version 2, hash `79204e1bd5a0fa7403024beb40628604bbfc51c16fb6bfa54566753887c0b20d`,
-agreed in [spec/outcome-spec.v2.json](spec/outcome-spec.v2.json). Version 1, which the
+Spec: Capture request #2 (`6d47d38e-10cd-4b9a-991d-2e5a272be6b7`), version 3, hash `cf5d4bc20d63ce09bd157dab3a548cb68bd92eebc074c0b242bd04345defb719`,
+agreed in [spec/outcome-spec.v3.json](spec/outcome-spec.v3.json). Version 1, which the
 Factory built the first draft from, is in [spec/outcome-spec.v1.json](spec/outcome-spec.v1.json).
 
 ## Bounded purpose
@@ -124,6 +124,11 @@ date rolling on), stable id, Jev's choice
 (`candidate`, `not_candidate`, `withheld` or `unclassified`), and its outcome
 (`logged` with the Capture request link, `matched` with the extension's name,
 `skipped` or `failed`, with the reason).
+
+The `candidates` method answers spec version 3's recipe from the latest scan: the
+candidates, each with its note path, line, text and outcome, and when that scan
+ran. It reads the `logged` data and starts no scan. Its recipe is
+`workflows/workflow-obsidian-task-scan-candidates.yaml`.
 
 ## Out of scope
 
