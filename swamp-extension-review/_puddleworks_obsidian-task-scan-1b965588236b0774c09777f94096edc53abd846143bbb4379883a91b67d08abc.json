@@ -1,7 +1,7 @@
 {
   "extension": "@puddleworks/obsidian-task-scan",
-  "version": "2026.11.05.1",
-  "reviewedAt": "2026-11-05T15:28:23Z",
+  "version": "2026.11.10.1",
+  "reviewedAt": "2026-11-10T10:00:00Z",
   "dimensions": [
     {
       "id": "credentials-secrets",
@@ -21,7 +21,7 @@
     {
       "id": "testing-completeness",
       "verdict": "pass",
-      "note": "67 tests (8 new in 2026.11.02.2) with a fake registry and a fake Capture, no network: Obsidian Tasks fields in the emoji and Dataview formats, U+FE0F variants, a recurrence rule ending at any field, tasks without fields left byte for byte, a recurring task keeping its id when its date rolls on, the rule in Jev questions and request descriptions, and new stopwords; plus the 2026.11.02.1 coverage of searching, picking, every outcome and AC7 failure path, preview, the stable key and the 90-call cap. End to end against a mock Jev and a scratch Capture: a recurring task logged as request #3, then completed and rolled on a week by hand, stays request #3 with no new request; Jev and Capture never saw its dates; the vault checksum is unchanged. Read-only check on a real 397-task vault: only the 6 recurring tasks change text, each to a clean title with its rule. 2026.11.05.1: 80 tests (13 new in 2026.11.05.1): every outcome's line, one candidate, 23 candidates past the engine's 20-line cap, the empty text from spec version 3, no scan, an unreadable scan, and the recipe's pattern against the spec's phrase compiled as the engine does. Run for real: the recipe through puddlerecipes' recipeFromWorkflow and parseRecipe, and candidates through swamp with no scan and after a preview log. Not yet run: the phrase through the router, which needs the published version in the desk."
+      "note": "67 tests (8 new in 2026.11.02.2) with a fake registry and a fake Capture, no network: Obsidian Tasks fields in the emoji and Dataview formats, U+FE0F variants, a recurrence rule ending at any field, tasks without fields left byte for byte, a recurring task keeping its id when its date rolls on, the rule in Jev questions and request descriptions, and new stopwords; plus the 2026.11.02.1 coverage of searching, picking, every outcome and AC7 failure path, preview, the stable key and the 90-call cap. End to end against a mock Jev and a scratch Capture: a recurring task logged as request #3, then completed and rolled on a week by hand, stays request #3 with no new request; Jev and Capture never saw its dates; the vault checksum is unchanged. Read-only check on a real 397-task vault: only the 6 recurring tasks change text, each to a clean title with its rule. 2026.11.05.1: 80 tests (13 new in 2026.11.05.1): every outcome's line, one candidate, 23 candidates past the engine's 20-line cap, the empty text from spec version 3, no scan, an unreadable scan, and the recipe's pattern against the spec's phrase compiled as the engine does. Run for real: the recipe through puddlerecipes' recipeFromWorkflow and parseRecipe, and candidates through swamp with no scan and after a preview log. Not yet run: the phrase through the router, which needs the published version in the desk. 2026.11.10.1: still 80 tests, all passing; the test that pins manifest, model and last upgrade to one version covers the bump. No behaviour changed."
     },
     {
       "id": "idempotency-resilience",
@@ -31,7 +31,7 @@
     {
       "id": "api-contracts",
       "verdict": "pass",
-      "note": "Registry: swamp extension search <query> --json, the query passed as one argument (no shell), at most four words of [a-z0-9_-] starting with a letter or digit, so it can never read as a flag; extensions[] rows without a string name are skipped. Capture: create_request with as, title (at most 120 characters), description, candidateExtensions (at most 3) and idempotencyKey (35 characters), all inside Capture's limits; the request id and number are read from the request resource. Pick answers are checked against AnswerSchema. 2026.11.02.2: titles no longer carry Obsidian Tasks dates or emoji fields, and the description adds one line, It recurs <rule>., well within Capture limits. 2026.11.05.1: The recipe is a pack workflow with a puddlerouterRecipe tag and one model_method step, the form @puddleworks/recipes reads; the tag's pattern, dataName and template come from spec version 3's recipe. The extension's new puddlerouter-recipe label makes recipes-sync report no puddlerouterRecipe tag for the scan workflow (puddlerecipes#5), and the recipe still indexes."
+      "note": "Registry: swamp extension search <query> --json, the query passed as one argument (no shell), at most four words of [a-z0-9_-] starting with a letter or digit, so it can never read as a flag; extensions[] rows without a string name are skipped. Capture: create_request with as, title (at most 120 characters), description, candidateExtensions (at most 3) and idempotencyKey (35 characters), all inside Capture's limits; the request id and number are read from the request resource. Pick answers are checked against AnswerSchema. 2026.11.02.2: titles no longer carry Obsidian Tasks dates or emoji fields, and the description adds one line, It recurs <rule>., well within Capture limits. 2026.11.05.1: The recipe is a pack workflow with a puddlerouterRecipe tag and one model_method step, the form @puddleworks/recipes reads; the tag's pattern, dataName and template come from spec version 3's recipe. The extension's new puddlerouter-recipe label makes recipes-sync report no puddlerouterRecipe tag for the scan workflow (puddlerecipes#5), and the recipe still indexes. 2026.11.10.1: No code change. The README now says recipes-sync skips the scan workflow (puddlerecipes 2026.11.06.1 or later) instead of reporting no puddlerouterRecipe tag for it; the earlier sentence about that message no longer applies to current @puddleworks/recipes."
     },
     {
       "id": "resource-management",
@@ -41,7 +41,7 @@
     {
       "id": "published-surface-hygiene",
       "verdict": "pass",
-      "note": "README says the content words of each candidate are sent to the swamp extension registry as a search and that withheld tasks are never sent; examples use you@example.com and someone@example.com. The only address shipped is the default captureUrl, http://127.0.0.1:3002. No personal paths, hostnames or names in shipped files. 2026.11.05.1: Read the changed shipped files: README.md, manifest, obsidian_task_scan.ts and the recipe workflow. Examples are generic. spec/outcome-spec.v3.json has names as the user and emails blank, and isn't shipped."
+      "note": "README says the content words of each candidate are sent to the swamp extension registry as a search and that withheld tasks are never sent; examples use you@example.com and someone@example.com. The only address shipped is the default captureUrl, http://127.0.0.1:3002. No personal paths, hostnames or names in shipped files. 2026.11.05.1: Read the changed shipped files: README.md, manifest, obsidian_task_scan.ts and the recipe workflow. Examples are generic. spec/outcome-spec.v3.json has names as the user and emails blank, and isn't shipped. 2026.11.10.1: Read the changed shipped file, README.md. The new paragraph names only @puddleworks/recipes and puddlerouter.yaml; no personal path, host or name."
     },
     {
       "id": "schema-strictness",
@@ -61,7 +61,7 @@
     {
       "id": "preflight-checks",
       "verdict": "pass",
-      "note": "log decides everything it can before calling Capture: preview, previous reuse, the call cap and runModel being present. Capture itself checks logAs is in its people list and fails the call if not, which leaves the task failed. run still checks folder containment and existence before reading. 2026.11.05.1: candidates reads only its own logged data, and writes only its own answer, so it needs no checks. The extension isn't labelled effects-read because log writes to Capture; the owner names this one method under reads:."
+      "note": "log decides everything it can before calling Capture: preview, previous reuse, the call cap and runModel being present. Capture itself checks logAs is in its people list and fails the call if not, which leaves the task failed. run still checks folder containment and existence before reading. 2026.11.05.1: candidates reads only its own logged data, and writes only its own answer, so it needs no checks. The extension isn't labelled effects-read because log writes to Capture; the owner names this one method under reads:. 2026.11.10.1: unchanged."
     },
     {
       "id": "instance-names",
@@ -76,7 +76,7 @@
     {
       "id": "version-upgrades",
       "verdict": "pass",
-      "note": "model.version stays 2026.11.02.1: 2026.11.02.2 adds no setting, and the only change to stored shapes is the optional recurrence on each task, which no method needs from an old resource. 2026.11.02.1 moved from 2026.10.23.4 with an upgrade entry, since logAs, captureModel, captureUrl and matchThreshold all default (tested). 2026.11.05.1: Model and manifest go to 2026.11.05.1 with one upgrades entry that leaves global arguments alone, pinned by a new test. The new resource needs nothing from old data."
+      "note": "model.version stays 2026.11.02.1: 2026.11.02.2 adds no setting, and the only change to stored shapes is the optional recurrence on each task, which no method needs from an old resource. 2026.11.02.1 moved from 2026.10.23.4 with an upgrade entry, since logAs, captureModel, captureUrl and matchThreshold all default (tested). 2026.11.05.1: Model and manifest go to 2026.11.05.1 with one upgrades entry that leaves global arguments alone, pinned by a new test. The new resource needs nothing from old data. 2026.11.10.1: Model and manifest go to 2026.11.10.1 with one more upgrades entry that leaves global arguments alone, pinned by the same test. Nothing in stored data changes."
     }
   ]
 }
