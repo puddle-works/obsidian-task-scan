@@ -1,6 +1,6 @@
 manifestVersion: 1
 name: "@puddleworks/obsidian-task-scan"
-version: "2026.11.05.1"
+version: "2026.11.10.1"
 description: "Find the open tasks in an Obsidian vault that a swamp extension could do, using Jev to classify them, and log each one no extension covers in Capture."
 repository: "https://github.com/puddle-works/obsidian-task-scan"
 license: MIT

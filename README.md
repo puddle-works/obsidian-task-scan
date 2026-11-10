@@ -134,10 +134,13 @@ run, which reuses what the last one logged.
 
 Ask it through puddlerouter: `@puddleworks/recipes-sync` indexes the recipe in
 `workflows/workflow-obsidian-task-scan-candidates.yaml`, because the extension is
-labelled `puddlerouter-recipe`. Sync also reports `no puddlerouterRecipe tag` for
-the scan workflow, which isn't a recipe; the recipe is indexed anyway. The label
-isn't `effects-read`, because `log` writes to Capture, so add the one method that
-only reads to `puddlerouter.yaml`, or each ask stops for a yes:
+labelled `puddlerouter-recipe`. Sync skips the scan workflow, which has no
+recipe tag (`@puddleworks/recipes` 2026.11.06.1 or later; earlier versions report
+`no puddlerouterRecipe tag` for it, and still index the recipe). The label isn't
+`effects-read`, because `log` writes to Capture. puddlerouter only runs a method at
+once when its owner names it under `reads:` in their own `puddlerouter.yaml`; an
+extension or pack can't do that for them. So add the one method that only reads,
+or each ask stops for a yes:
 
 ```yaml
 reads:
