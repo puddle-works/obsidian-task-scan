@@ -995,7 +995,7 @@ interface MethodContext {
 /** The `@puddleworks/obsidian-task-scan` model type: methods `run`, `classify`, `match`, `log` and `candidates`. */
 export const model = {
   type: "@puddleworks/obsidian-task-scan",
-  version: "2026.11.05.1",
+  version: "2026.11.10.1",
   globalArguments: GlobalArgsSchema,
   upgrades: [
     {
@@ -1014,6 +1014,11 @@ export const model = {
       toVersion: "2026.11.05.1",
       description:
         "Add the read-only candidates method and its recipe; no settings changed",
+      upgradeAttributes: (old: Record<string, unknown>) => old,
+    },
+    {
+      toVersion: "2026.11.10.1",
+      description: "Release for the README fix only; no settings changed",
       upgradeAttributes: (old: Record<string, unknown>) => old,
     },
   ],
